@@ -1,0 +1,19 @@
+
+
+display -a pipe.tr.ParseName
+display -a pipe.tr.Name
+display -a pipe.Line
+break text/template/exec.go:300
+break text/template/exec.go:307
+break text/template/exec.go:313
+
+# if / else query
+break text/template/exec.go:300
+
+ # true
+break text/template/exec.go:307
+
+ # false
+break text/template/exec.go:313
+
+
