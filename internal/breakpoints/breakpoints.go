@@ -1,10 +1,11 @@
 package breakpoints
 
 import (
+	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/go-delve/delve/service/api"
 )
 
-func GetConditionalBreakpoints() []*api.Breakpoint {
+func GetConditionalFrame() *frame.Frame {
 	condStartRequestedBreakpoint := &api.Breakpoint{
 		Name: "conditionalstart",
 		File: "text/template/exec.go",
@@ -26,10 +27,30 @@ func GetConditionalBreakpoints() []*api.Breakpoint {
 		condTrueRequestedBreakpoint,
 		condFalseRequestedBreakpoint,
 	}
-	return breakpoints
+
+
+	reqVars := []string{
+		"pipe.tr.ParseName",
+		"pipe.tr.Name",
+		"pipe.Line",
+	}
+
+	mapper := frame.Mapper{
+		"FunctionName": "pipe.tr.Name",
+		"LineNumber":   "pipe.Line",
+		"FileName":     "pipe.tr.ParseName",
+	}
+
+	frame := &frame.Frame{
+		Breakpoints: breakpoints,
+		ReqVars:     reqVars,
+		Mapper:      mapper,
+	}
+
+	return frame
 }
 
-func GetLineStartBreakpoints() []*api.Breakpoint {
+func GetLineStartFrame() *frame.Frame {
 	lineStartBreakpoint := &api.Breakpoint{
 		Name: "linestart",
 		File: "text/template/exec.go",
@@ -38,6 +59,24 @@ func GetLineStartBreakpoints() []*api.Breakpoint {
 	breakpoints := []*api.Breakpoint{
 		lineStartBreakpoint,
 	}
-	return breakpoints
 
+	reqVars := []string{
+		"node.Pipe.tr.ParseName",
+		"node.Pipe.tr.Name",
+		"node.Pipe.Line",
+	}
+
+	mapper := frame.Mapper{
+		"FunctionName": "node.Pipe.tr.Name",
+		"LineNumber":   "node.Pipe.Line",
+		"FileName":     "node.Pipe.tr.ParseName",
+	}
+
+	frame := &frame.Frame{
+		Breakpoints: breakpoints,
+		ReqVars:     reqVars,
+		Mapper:      mapper,
+	}
+
+	return frame
 }

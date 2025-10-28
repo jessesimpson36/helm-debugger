@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
-	"github.com/jessesimpson36/helm-debugger/internal/display"
 	"github.com/jessesimpson36/helm-debugger/internal/breakpoints"
 )
 
@@ -16,8 +15,8 @@ func Main() error {
 		return err
 	}
 
-	breakpoints := breakpoints.GetLineStartBreakpoints()
-	err = dlvController.Configure(ctx, rpcClient, breakpoints)
+	frame := breakpoints.GetLineStartFrame()
+	err = dlvController.Configure(ctx, rpcClient, frame)
 	if err != nil {
 		return err
 	}
@@ -44,10 +43,22 @@ func Main() error {
 			continue
 		}
 
-		err = display.DisplayVarsFromNodePipe(rpcClient)
+		respVars, err := frame.Gather(rpcClient)
 		if err != nil {
 			// do nothing since this is noisy
-			// return err
+			// println("Error gathering variables: " + err.Error())
+		} else {
+			execUnit, err := frame.Bind(respVars)
+			if err != nil {
+				// do nothing since this is noisy
+				// println("Error binding variables: " + err.Error())
+			} else {
+				err = execUnit.Display()
+				if err != nil {
+					// do nothing since this is noisy
+					// println("Error displaying execution unit: " + err.Error())
+				}
+			}
 		}
 
 		state = <-rpcClient.Continue()

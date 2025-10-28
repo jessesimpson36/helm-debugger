@@ -1,5 +1,5 @@
 
-.PHONY: build run
+.PHONY: clone_helm compile_helm build run
 
 all: build run
 
@@ -15,4 +15,4 @@ build:
 	go build
 
 run:
-	go run .
+	go run . line

@@ -3,7 +3,7 @@ package dlvcontroller
 import (
 	"context"
 	"fmt"
-	"github.com/go-delve/delve/service/api"
+	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/go-delve/delve/service/rpc2"
 	"time"
 	"os"
@@ -35,8 +35,8 @@ func (r *RPCDlvController) StartSession(ctx context.Context) (*rpc2.RPCClient, e
 	return rpc2.NewClient("localhost:10122"), nil
 }
 
-func (r *RPCDlvController) Configure(ctx context.Context, client *rpc2.RPCClient, breakpoints []*api.Breakpoint) error {
-	for _, bp := range breakpoints {
+func (r *RPCDlvController) Configure(ctx context.Context, client *rpc2.RPCClient, frame *frame.Frame) error {
+	for _, bp := range frame.Breakpoints {
 		_, err := client.CreateBreakpoint(bp)
 		if err != nil {
 			return fmt.Errorf("Failed to create breakpoint: %w", err)
