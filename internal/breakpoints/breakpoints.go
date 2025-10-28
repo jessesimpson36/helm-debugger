@@ -5,6 +5,24 @@ import (
 	"github.com/go-delve/delve/service/api"
 )
 
+
+// display -a pipe.tr.ParseName
+// display -a pipe.tr.Name
+// display -a pipe.Line
+// break text/template/exec.go:300
+// break text/template/exec.go:307
+// break text/template/exec.go:313
+//
+// # if / else query
+// break text/template/exec.go:300
+//
+// # true
+// break text/template/exec.go:307
+//
+// # false
+// break text/template/exec.go:313
+//
+
 func GetConditionalFrame() *frame.Frame {
 	condStartRequestedBreakpoint := &api.Breakpoint{
 		Name: "conditionalstart",
@@ -54,7 +72,7 @@ func GetLineStartFrame() *frame.Frame {
 	lineStartBreakpoint := &api.Breakpoint{
 		Name: "linestart",
 		File: "text/template/exec.go",
-		Line: 263, // TODO: figure out what line number
+		Line: 263,
 	}
 	breakpoints := []*api.Breakpoint{
 		lineStartBreakpoint,
