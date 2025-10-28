@@ -24,7 +24,7 @@ func ReadOneLine(fileName string, lineNumber int) (string, error) {
 	for scanner.Scan() {
 		if currentLine == lineNumber-1 {
 			returned = scanner.Text()
-			fmt.Println(returned)
+			// fmt.Println(returned)
 			break
 		}
 		currentLine++

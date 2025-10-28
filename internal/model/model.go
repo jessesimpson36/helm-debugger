@@ -2,10 +2,13 @@ package model
 
 import (
 	"context"
+	"fmt"
 	"time"
 	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
 	"github.com/jessesimpson36/helm-debugger/internal/breakpoints"
+	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
+	"github.com/jessesimpson36/helm-debugger/internal/query"
 )
 
 func Main() error {
@@ -35,6 +38,7 @@ func Main() error {
 		return err
 	}
 
+	execUnits := []*frame.ExecutionUnit{}
 	for {
 		if state.Exited {
 			println("Program stopped")
@@ -66,14 +70,8 @@ func Main() error {
 			execUnit, err := currentFrame.Bind(respVars)
 			if err != nil {
 				// do nothing since this is noisy
-				// println("Error binding variables: " + err.Error())
-			} else {
-				err = execUnit.Display()
-				if err != nil {
-					// do nothing since this is noisy
-					// println("Error displaying execution unit: " + err.Error())
-				}
 			}
+			execUnits = append(execUnits, execUnit)
 		}
 
 		state = <-rpcClient.Continue()
@@ -82,5 +80,47 @@ func Main() error {
 	if err != nil {
 		return err
 	}
+
+
+	executionFlows := executionflow.Process(execUnits)
+
+	fmt.Println("================= VALUES QUERY =================")
+	valuesQuery := []string{
+		"image.tag",
+	}
+
+	afterQueryValuesReferences := query.QueryValuesReference(executionFlows, valuesQuery)
+
+	for _, flow := range afterQueryValuesReferences {
+		flow.Template.Display()
+		for _, helper := range flow.Helpers {
+			helper.Display()
+		}
+		fmt.Println("--------------------------------------------------")
+	}
+
+	fmt.Println("================= HELPERS QUERY =================")
+	afterQueryHelpers := query.QueryHelpers(executionFlows, []string{"test.serviceAccountName"})
+
+	for _, flow := range afterQueryHelpers {
+		flow.Template.Display()
+		for _, helper := range flow.Helpers {
+			helper.Display()
+		}
+		fmt.Println("--------------------------------------------------")
+	}
+
+
+	fmt.Println("================= TEMPLATE QUERY =================")
+	afterQueryTemplate := query.QueryTemplate(executionFlows, []string{"test/templates/deployment.yaml:42"})
+
+	for _, flow := range afterQueryTemplate {
+		flow.Template.Display()
+		for _, helper := range flow.Helpers {
+			helper.Display()
+		}
+		fmt.Println("--------------------------------------------------")
+	}
+
 	return nil
 }

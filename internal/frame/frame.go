@@ -26,6 +26,7 @@ type ExecutionUnit struct {
 	FunctionName string
 	LineNumber   int
 	FileName     string
+	LineContent  string
 }
 
 
@@ -74,6 +75,13 @@ func (f *Frame) Bind(respVars map[string]string) (*ExecutionUnit, error) {
 		default:
 			return nil, fmt.Errorf("Unknown key in mapper: %s", key)
 		}
+		if execUnit.FunctionName != "" && execUnit.FileName != "" && execUnit.LineNumber != 0 {
+			lineContent, err := display.ReadOneLine(execUnit.FileName, execUnit.LineNumber)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to read line content: %w", err)
+			}
+			execUnit.LineContent = lineContent
+		}
 	}
 
 	return execUnit, nil
@@ -85,6 +93,6 @@ func (ex *ExecutionUnit) Display() error {
 		fmt.Printf("  in %s\n", ex.FunctionName)
 	}
 	fmt.Print("    ")
-	display.ReadOneLine(ex.FileName, ex.LineNumber)
+	fmt.Println(ex.LineContent)
 	return nil
 }
