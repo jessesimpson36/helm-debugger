@@ -15,4 +15,4 @@ build:
 	go build
 
 run:
-	go run . line
+	go run . model test --show-only templates/deployment.yaml

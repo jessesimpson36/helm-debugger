@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/go-delve/delve/service/rpc2"
+	"strings"
 	"time"
 	"os"
 	"os/exec"
@@ -23,7 +24,9 @@ type RPCDlvController struct{}
 
 func (r *RPCDlvController) StartSession(ctx context.Context) (*rpc2.RPCClient, error) {
 	// helm template . --show-only templates/deployment.yaml
-	cmd := exec.CommandContext(ctx, "dlv", "exec", "--headless", "--listen", "localhost:10122", "./helm/bin/helm", "--", "template", "test", "--show-only", "templates/deployment.yaml")
+	chartName := os.Args[2]
+	args := os.Args[3:]
+	cmd := exec.CommandContext(ctx, "bash", "-c", "dlv exec --headless --listen localhost:10122 ./helm/bin/helm -- template " + chartName + " " + strings.Join(args, " "))
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()
