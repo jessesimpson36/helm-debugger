@@ -56,6 +56,12 @@ func Main() error {
 			if state.CurrentThread.Breakpoint != nil && state.CurrentThread.Breakpoint.Name == frame.Breakpoints[i].Name {
 				currentFrame = frame
 			}
+			if state.CurrentThread.Breakpoint != nil && (state.CurrentThread.Breakpoint.Name == "conditionalevaluatedtrue" || state.CurrentThread.Breakpoint.Name == "conditionalevaluatedfalse") {
+				// not doing anything with these breakpoints yet
+				state = <-rpcClient.Continue()
+				continue
+			}
+
 		}
 		if currentFrame == nil {
 			state = <-rpcClient.Continue()
