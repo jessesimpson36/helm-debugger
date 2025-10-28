@@ -25,7 +25,9 @@ type RPCDlvController struct{}
 
 func (r *RPCDlvController) StartSession(ctx context.Context) (*rpc2.RPCClient, error) {
 	// helm template . --show-only templates/deployment.yaml
-	cmd := exec.CommandContext(ctx, "dlv", "exec", "--headless", "--listen", "localhost:10122", "./helm/bin/helm", "--", "template", "test", "--show-only", "test/templates/deployment.yaml")
+	cmd := exec.CommandContext(ctx, "dlv", "exec", "--headless", "--listen", "localhost:10122", "./helm/bin/helm", "--", "template", "test", "--show-only", "templates/deployment.yaml")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	err := cmd.Start()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to start dlv subprocess: %w", err)

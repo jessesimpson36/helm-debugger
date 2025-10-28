@@ -25,11 +25,12 @@ func main() {
 		panic(err)
 	}
 
+	state, err := rpcClient.GetState()
+	if err != nil {
+		panic(err)
+	}
+
 	for {
-		state, err := rpcClient.GetState()
-		if err != nil {
-			panic(err)
-		}
 		if state.Exited {
 			println("Program stopped")
 			break
