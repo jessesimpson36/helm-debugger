@@ -5,6 +5,7 @@ import (
 	"time"
 	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
 	"github.com/jessesimpson36/helm-debugger/internal/breakpoints"
+	"github.com/jessesimpson36/helm-debugger/internal/frame"
 )
 
 func Main() error {
@@ -15,8 +16,8 @@ func Main() error {
 		return err
 	}
 
-	frame := breakpoints.GetConditionalFrame()
-	err = dlvController.Configure(ctx, rpcClient, frame)
+	frames := []*frame.Frame{breakpoints.GetConditionalFrame()}
+	err = dlvController.Configure(ctx, rpcClient, frames)
 	if err != nil {
 		return err
 	}
@@ -43,11 +44,23 @@ func Main() error {
 			continue
 		}
 
-		respVars, err := frame.Gather(rpcClient)
+		// go from state to frame
+		var currentFrame *frame.Frame
+		for i, frame := range frames {
+			if state.CurrentThread.Breakpoint != nil && state.CurrentThread.Breakpoint.Name == frame.Breakpoints[i].Name {
+				currentFrame = frame
+			}
+		}
+		if currentFrame == nil {
+			state = <-rpcClient.Continue()
+			continue
+		}
+
+		respVars, err := currentFrame.Gather(rpcClient)
 		if err != nil {
 			println("Error gathering variables: " + err.Error())
 		} else {
-			execUnit, err := frame.Bind(respVars)
+			execUnit, err := currentFrame.Bind(respVars)
 			if err != nil {
 				println("Error binding variables: " + err.Error())
 			} else {

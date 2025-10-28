@@ -35,11 +35,13 @@ func (r *RPCDlvController) StartSession(ctx context.Context) (*rpc2.RPCClient, e
 	return rpc2.NewClient("localhost:10122"), nil
 }
 
-func (r *RPCDlvController) Configure(ctx context.Context, client *rpc2.RPCClient, frame *frame.Frame) error {
-	for _, bp := range frame.Breakpoints {
-		_, err := client.CreateBreakpoint(bp)
-		if err != nil {
-			return fmt.Errorf("Failed to create breakpoint: %w", err)
+func (r *RPCDlvController) Configure(ctx context.Context, client *rpc2.RPCClient, frames []*frame.Frame) error {
+	for _, frame := range frames {
+		for _, bp := range frame.Breakpoints {
+			_, err := client.CreateBreakpoint(bp)
+			if err != nil {
+				return fmt.Errorf("Failed to create breakpoint: %w", err)
+			}
 		}
 	}
 	return nil

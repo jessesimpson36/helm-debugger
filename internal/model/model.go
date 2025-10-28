@@ -1,4 +1,4 @@
-package line
+package model
 
 import (
 	"context"
@@ -16,9 +16,10 @@ func Main() error {
 		return err
 	}
 
-	frames := []*frame.Frame{breakpoints.GetLineStartFrame()}
+	frames := []*frame.Frame{
+		breakpoints.GetLineStartFrame(),
+	}
 	err = dlvController.Configure(ctx, rpcClient, frames)
-
 	if err != nil {
 		return err
 	}
@@ -55,7 +56,6 @@ func Main() error {
 			state = <-rpcClient.Continue()
 			continue
 		}
-
 
 		respVars, err := currentFrame.Gather(rpcClient)
 		if err != nil {

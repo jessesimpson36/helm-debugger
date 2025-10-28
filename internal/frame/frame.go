@@ -13,7 +13,6 @@ type Frame struct {
 	Breakpoints []*api.Breakpoint
 	ReqVars     []string
 	Mapper      Mapper
-
 }
 
 // A mapper is helps bind a variable name to a common type
