@@ -87,12 +87,17 @@ func (f *Frame) Bind(respVars map[string]string) (*ExecutionUnit, error) {
 	return execUnit, nil
 }
 
-func (ex *ExecutionUnit) Display() error {
-	fmt.Printf("%s:%d\n", ex.FileName, ex.LineNumber)
-	if ex.FunctionName != ex.FileName {
-		fmt.Printf("  in %s\n", ex.FunctionName)
+func (ex *ExecutionUnit) Display(isHelper bool) error {
+	indent := ""
+	if isHelper {
+		indent = "  "
 	}
-	fmt.Print("    ")
-	fmt.Println(ex.LineContent)
+
+	fmt.Printf("%s%s:%d\n", indent, ex.FileName, ex.LineNumber)
+	if ex.FunctionName != ex.FileName {
+		fmt.Printf("%s  in %s\n", indent, ex.FunctionName)
+	}
+	fmt.Printf("%s    ", indent)
+	fmt.Print(ex.LineContent + "\n")
 	return nil
 }

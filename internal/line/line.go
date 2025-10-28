@@ -67,7 +67,7 @@ func Main() error {
 				// do nothing since this is noisy
 				// println("Error binding variables: " + err.Error())
 			} else {
-				err = execUnit.Display()
+				err = execUnit.Display(false)
 				if err != nil {
 					// do nothing since this is noisy
 					// println("Error displaying execution unit: " + err.Error())

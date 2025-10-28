@@ -92,9 +92,9 @@ func Main() error {
 	afterQueryValuesReferences := query.QueryValuesReference(executionFlows, valuesQuery)
 
 	for _, flow := range afterQueryValuesReferences {
-		flow.Template.Display()
+		flow.Template.Display(false)
 		for _, helper := range flow.Helpers {
-			helper.Display()
+			helper.Display(true)
 		}
 		fmt.Println("--------------------------------------------------")
 	}
@@ -103,9 +103,9 @@ func Main() error {
 	afterQueryHelpers := query.QueryHelpers(executionFlows, []string{"test.serviceAccountName"})
 
 	for _, flow := range afterQueryHelpers {
-		flow.Template.Display()
+		flow.Template.Display(false)
 		for _, helper := range flow.Helpers {
-			helper.Display()
+			helper.Display(true)
 		}
 		fmt.Println("--------------------------------------------------")
 	}
@@ -115,9 +115,9 @@ func Main() error {
 	afterQueryTemplate := query.QueryTemplate(executionFlows, []string{"test/templates/deployment.yaml:42"})
 
 	for _, flow := range afterQueryTemplate {
-		flow.Template.Display()
+		flow.Template.Display(false)
 		for _, helper := range flow.Helpers {
-			helper.Display()
+			helper.Display(true)
 		}
 		fmt.Println("--------------------------------------------------")
 	}
