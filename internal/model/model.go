@@ -102,6 +102,10 @@ func Main() error {
 		for _, helper := range flow.Helpers {
 			helper.Display(true)
 		}
+		fmt.Println("Relevant Values")
+		for _, valRef := range flow.ValuesReference {
+			fmt.Printf("- %s\n", valRef.ValuesName)
+		}
 		fmt.Println("--------------------------------------------------")
 	}
 
@@ -112,6 +116,10 @@ func Main() error {
 		flow.Template.Display(false)
 		for _, helper := range flow.Helpers {
 			helper.Display(true)
+		}
+		fmt.Println("Relevant Values")
+		for _, valRef := range flow.ValuesReference {
+			fmt.Printf("- %s\n", valRef.ValuesName)
 		}
 		fmt.Println("--------------------------------------------------")
 	}
@@ -124,6 +132,10 @@ func Main() error {
 		flow.Template.Display(false)
 		for _, helper := range flow.Helpers {
 			helper.Display(true)
+		}
+		fmt.Println("Relevant Values")
+		for _, valRef := range flow.ValuesReference {
+			fmt.Printf("- %s\n", valRef.ValuesName)
 		}
 		fmt.Println("--------------------------------------------------")
 	}
