@@ -2,56 +2,18 @@
 package main
 
 import (
-	"context"
-	"time"
-	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
+	"os"
+	"github.com/jessesimpson36/helm-debugger/internal/branch"
 )
 
 func main() {
-	dlvController := &dlvcontroller.RPCDlvController{}
-	ctx := context.Background()
-	rpcClient, err := dlvController.StartSession(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	err = dlvController.Configure(ctx, rpcClient)
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = rpcClient.Restart(false)
-	if err != nil {
-		panic(err)
-	}
-
-	state, err := rpcClient.GetState()
-	if err != nil {
-		panic(err)
-	}
-
-	for {
-		if state.Exited {
-			println("Program stopped")
-			break
-		}
-
-		if state.Running {
-			// sleep 1 second
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		err = dlvController.DisplayVars(rpcClient)
+	args := os.Args
+	if len(args) > 1 && args[1] == "branch" {
+		err := branch.Main()
 		if err != nil {
 			panic(err)
 		}
-
-		state = <-rpcClient.Continue()
+	} else {
+		println("No valid command provided. Use 'branch' to run the branch mode. (prints every if/else condition)")
 	}
-	err = dlvController.QuitSession(rpcClient)
-	if err != nil {
-		panic(err)
-	}
-
 }
