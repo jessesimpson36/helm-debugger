@@ -18,6 +18,7 @@ func Main() error {
 
 	frames := []*frame.Frame{
 		breakpoints.GetLineStartFrame(),
+		breakpoints.GetConditionalFrame(),
 	}
 	err = dlvController.Configure(ctx, rpcClient, frames)
 	if err != nil {
