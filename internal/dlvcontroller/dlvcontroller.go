@@ -130,7 +130,7 @@ func (r *RPCDlvController) DisplayVars(client *rpc2.RPCClient) error {
 	if err != nil {
 		return fmt.Errorf("Failed to convert line number to int: %w", err)
 	}
-	ReadOneLine(name.Value, lineNumber)
+	ReadOneLine(parseName.Value, lineNumber)
 
 
 //	vars, err := client.ListLocalVariables(api.EvalScope{GoroutineID: 1, Frame: 0}, loadConfig)
