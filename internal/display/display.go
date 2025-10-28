@@ -78,6 +78,44 @@ func DisplayVars(client *rpc2.RPCClient) error {
 	return nil
 }
 
+
+func DisplayVarsFromNodePipe(client *rpc2.RPCClient) error {
+	loadConfig := api.LoadConfig{
+		FollowPointers:     true,
+		MaxVariableRecurse: 10,
+		MaxStringLen:       10000,
+		MaxArrayValues:     10000,
+		MaxStructFields:    -1,
+	}
+	parseName, err := client.EvalVariable(api.EvalScope{GoroutineID: 1, Frame: 0}, "node.Pipe.tr.ParseName", loadConfig)
+	if err != nil {
+		return fmt.Errorf("Failed to eval variable: %w", err)
+	}
+	name, err := client.EvalVariable(api.EvalScope{GoroutineID: 1, Frame: 0}, "node.Pipe.tr.Name", loadConfig)
+	if err != nil {
+		return fmt.Errorf("Failed to eval variable: %w", err)
+	}
+	line, err := client.EvalVariable(api.EvalScope{GoroutineID: 1, Frame: 0}, "node.Pipe.Line", loadConfig)
+	if err != nil {
+		return fmt.Errorf("Failed to eval variable: %w", err)
+	}
+	if parseName == nil || name == nil || line == nil {
+		return nil
+	}
+	fmt.Println("ParseName:", parseName.Value)
+	fmt.Println("Name:", name.Value)
+	fmt.Println("Line:", line.Value)
+
+	// read line number line.Value of file name.Value and print the line
+	lineNumber, err := strconv.Atoi(line.Value)
+	if err != nil {
+		return fmt.Errorf("Failed to convert line number to int: %w", err)
+	}
+	ReadOneLine(parseName.Value, lineNumber)
+
+	return nil
+}
+
 func DisplayAllLocal(client *rpc2.RPCClient) error {
 	loadConfig := api.LoadConfig{
 		FollowPointers:     true,

@@ -28,3 +28,16 @@ func GetConditionalBreakpoints() []*api.Breakpoint {
 	}
 	return breakpoints
 }
+
+func GetLineStartBreakpoints() []*api.Breakpoint {
+	lineStartBreakpoint := &api.Breakpoint{
+		Name: "linestart",
+		File: "text/template/exec.go",
+		Line: 263, // TODO: figure out what line number
+	}
+	breakpoints := []*api.Breakpoint{
+		lineStartBreakpoint,
+	}
+	return breakpoints
+
+}
