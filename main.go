@@ -4,6 +4,7 @@ package main
 import (
 	"os"
 	"github.com/jessesimpson36/helm-debugger/internal/branch"
+	"github.com/jessesimpson36/helm-debugger/internal/interactive"
 	"github.com/jessesimpson36/helm-debugger/internal/line"
 	"github.com/jessesimpson36/helm-debugger/internal/model"
 )
@@ -22,6 +23,11 @@ func main() {
 		}
 	} else if len(args) > 1 && args[1] == "model" {
 		err := model.Main()
+		if err != nil {
+			panic(err)
+		}
+	} else if len(args) > 1 && args[1] == "interactive" {
+		err := interactive.Main()
 		if err != nil {
 			panic(err)
 		}
