@@ -1,10 +1,10 @@
 package breakpoints
 
 import (
-	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/go-delve/delve/service/api"
+	"github.com/jessesimpson36/helm-debugger/internal/frame"
+	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
 )
-
 
 // display -a pipe.tr.ParseName
 // display -a pipe.tr.Name
@@ -23,7 +23,7 @@ import (
 // break text/template/exec.go:313
 //
 
-func GetConditionalFrame() *frame.Frame {
+func GetConditionalFrame() *delegate.DelegateFrame {
 	condStartRequestedBreakpoint := &api.Breakpoint{
 		Name: "conditionalstart",
 		File: "text/template/exec.go",
@@ -46,7 +46,6 @@ func GetConditionalFrame() *frame.Frame {
 		condFalseRequestedBreakpoint,
 	}
 
-
 	reqVars := []string{
 		"pipe.tr.ParseName",
 		"pipe.tr.Name",
@@ -59,7 +58,7 @@ func GetConditionalFrame() *frame.Frame {
 		"FileName":     "pipe.tr.ParseName",
 	}
 
-	frame := &frame.Frame{
+	frame := &delegate.DelegateFrame{
 		Breakpoints: breakpoints,
 		ReqVars:     reqVars,
 		Mapper:      mapper,
@@ -68,7 +67,7 @@ func GetConditionalFrame() *frame.Frame {
 	return frame
 }
 
-func GetLineStartFrame() *frame.Frame {
+func GetLineStartFrame() *delegate.DelegateFrame {
 	lineStartBreakpoint := &api.Breakpoint{
 		Name: "linestart",
 		File: "text/template/exec.go",
@@ -90,7 +89,38 @@ func GetLineStartFrame() *frame.Frame {
 		"FileName":     "node.Pipe.tr.ParseName",
 	}
 
-	frame := &frame.Frame{
+	frame := &delegate.DelegateFrame{
+		Breakpoints: breakpoints,
+		ReqVars:     reqVars,
+		Mapper:      mapper,
+	}
+
+	return frame
+}
+
+func GetRenderedManifestFrame() *delegate.DelegateFrame {
+	renderedManifestBreakpoint := &api.Breakpoint{
+		Name: "renderedmanifest",
+		File: "text/template/exec.go",
+		Line: 287,
+	}
+	breakpoints := []*api.Breakpoint{
+		renderedManifestBreakpoint,
+	}
+
+	reqVars := []string{
+		"s.wr.buf",
+		"node.Pipe.Line",
+		"node.Pipe.tr.ParseName",
+	}
+
+	mapper := frame.Mapper{
+		"RenderedManifest": "s.wr.buf",
+		"LineNumber":       "node.Pipe.Line",
+		"FileName":         "node.Pipe.tr.ParseName",
+	}
+
+	frame := &delegate.DelegateFrame{
 		Breakpoints: breakpoints,
 		ReqVars:     reqVars,
 		Mapper:      mapper,

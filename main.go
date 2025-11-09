@@ -3,9 +3,9 @@ package main
 
 import (
 	"os"
-	"github.com/jessesimpson36/helm-debugger/internal/branch"
-	"github.com/jessesimpson36/helm-debugger/internal/line"
-	"github.com/jessesimpson36/helm-debugger/internal/model"
+	"github.com/jessesimpson36/helm-debugger/internal/alternativemain/branch"
+	"github.com/jessesimpson36/helm-debugger/internal/alternativemain/line"
+	"github.com/jessesimpson36/helm-debugger/internal/alternativemain/model"
 )
 
 func main() {

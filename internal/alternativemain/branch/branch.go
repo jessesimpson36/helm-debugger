@@ -2,10 +2,10 @@ package branch
 
 import (
 	"context"
-	"time"
-	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
 	"github.com/jessesimpson36/helm-debugger/internal/breakpoints"
-	"github.com/jessesimpson36/helm-debugger/internal/frame"
+	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
+	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
+	"time"
 )
 
 func Main() error {
@@ -16,7 +16,7 @@ func Main() error {
 		return err
 	}
 
-	frames := []*frame.Frame{breakpoints.GetConditionalFrame()}
+	frames := []*delegate.DelegateFrame{breakpoints.GetConditionalFrame()}
 	err = dlvController.Configure(ctx, rpcClient, frames)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func Main() error {
 		}
 
 		// go from state to frame
-		var currentFrame *frame.Frame
+		var currentFrame *delegate.DelegateFrame
 		for i, frame := range frames {
 			if state.CurrentThread.Breakpoint != nil && state.CurrentThread.Breakpoint.Name == frame.Breakpoints[i].Name {
 				currentFrame = frame

@@ -3,12 +3,13 @@ package model
 import (
 	"context"
 	"fmt"
-	"time"
-	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
+	"github.com/jessesimpson36/helm-debugger/internal/breakpointevent"
 	"github.com/jessesimpson36/helm-debugger/internal/breakpoints"
-	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
+	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
+	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
 	"github.com/jessesimpson36/helm-debugger/internal/query"
+	"time"
 )
 
 func Main() error {
@@ -19,7 +20,7 @@ func Main() error {
 		return err
 	}
 
-	frames := []*frame.Frame{
+	frames := []*delegate.DelegateFrame{
 		breakpoints.GetLineStartFrame(),
 		breakpoints.GetConditionalFrame(),
 	}
@@ -38,7 +39,7 @@ func Main() error {
 		return err
 	}
 
-	execUnits := []*frame.ExecutionUnit{}
+	breakpointEvents := []*frame.BindResult{}
 	for {
 		if state.Exited {
 			println("Program stopped")
@@ -51,7 +52,7 @@ func Main() error {
 			continue
 		}
 
-		var currentFrame *frame.Frame
+		var currentFrame *delegate.DelegateFrame
 		for i, frame := range frames {
 			if state.CurrentThread.Breakpoint != nil && state.CurrentThread.Breakpoint.Name == frame.Breakpoints[i].Name {
 				currentFrame = frame
@@ -73,11 +74,11 @@ func Main() error {
 			// do nothing since this is noisy
 			// println("Error gathering variables: " + err.Error())
 		} else {
-			execUnit, err := currentFrame.Bind(respVars)
+			breakpointEvent, err := currentFrame.Bind(respVars)
 			if err != nil {
 				// do nothing since this is noisy
 			}
-			execUnits = append(execUnits, execUnit)
+			breakpointEvents = append(breakpointEvents, breakpointEvent)
 		}
 
 		state = <-rpcClient.Continue()
@@ -87,8 +88,7 @@ func Main() error {
 		return err
 	}
 
-
-	executionFlows := executionflow.Process(execUnits)
+	executionFlows := breakpointevent.Process(breakpointEvents)
 
 	fmt.Println("================= VALUES QUERY =================")
 	valuesQuery := []string{
@@ -123,7 +123,6 @@ func Main() error {
 		}
 		fmt.Println("--------------------------------------------------")
 	}
-
 
 	fmt.Println("================= TEMPLATE QUERY =================")
 	afterQueryTemplate := query.QueryTemplate(executionFlows, []string{"test/templates/deployment.yaml:42"})
