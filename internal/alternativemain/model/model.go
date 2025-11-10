@@ -31,7 +31,9 @@ func PrintFilteredExecutionFlows(flows []*executionflow.ExecutionFlow) {
 			//fmt.Println("- " + capturedBuffer.FileName)
 			if prevBuffer != nil {
 				if strings.HasPrefix(capturedBuffer.Content, prevBuffer.Content) {
-					fmt.Println("- \n" + strings.TrimPrefix(capturedBuffer.Content, prevBuffer.Content))
+					for _, line := range strings.Split(strings.TrimPrefix(capturedBuffer.Content, prevBuffer.Content), "\n") {
+						fmt.Printf("+     %s\n", line)
+					}
 				}
 			} else {
 				for i, line := range strings.Split(capturedBuffer.Content, "\n") {

@@ -9,7 +9,7 @@ func Process(breakpointEvents []*frame.BindResult) []*executionflow.ExecutionFlo
 	flows := []*executionflow.ExecutionFlow{}
 	first := true
 	executionFlow := &executionflow.ExecutionFlow{}
-	//prevFlow := executionFlow
+	prevFlow := executionFlow
 	for _, breakpointEvent := range breakpointEvents {
 		// if for whatever reason we hit breakpoints in helpers before hitting a template, then skip
 		if breakpointEvent == nil {
@@ -28,7 +28,7 @@ func Process(breakpointEvents []*frame.BindResult) []*executionflow.ExecutionFlo
 			}
 			if executionflow.IsTemplate(execUnit) {
 				flows = append(flows, executionFlow)
-				//prevFlow = executionFlow
+				prevFlow = executionFlow
 				executionFlow = &executionflow.ExecutionFlow{}
 				executionFlow.Template = execUnit
 				executionflow.FillValuesReferences(executionFlow, execUnit)
@@ -39,10 +39,10 @@ func Process(breakpointEvents []*frame.BindResult) []*executionflow.ExecutionFlo
 		} else if breakpointEvent.RenderedLine != nil {
 			renderedLine := breakpointEvent.RenderedLine
 			// we keep track of the previous flow because we want the before and after the lines were rendered.
-//			if prevFlow != nil {
-//				prevFlow.RenderedManifest = append(prevFlow.RenderedManifest, renderedLine)
-//				prevFlow = nil
-//			}
+			if prevFlow != nil {
+				prevFlow.RenderedManifest = append(prevFlow.RenderedManifest, renderedLine)
+				prevFlow = nil
+			}
 			executionFlow.RenderedManifest = append(executionFlow.RenderedManifest, renderedLine)
 		}
 	}
