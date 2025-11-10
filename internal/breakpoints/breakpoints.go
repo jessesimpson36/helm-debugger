@@ -109,15 +109,15 @@ func GetRenderedManifestFrame() *delegate.DelegateFrame {
 	}
 
 	reqVars := []string{
-		"s.wr.buf",
-		"node.Pipe.Line",
-		"node.Pipe.tr.ParseName",
+		"string(s.wr.buf)",
+		//"node.Pipe.Line",
+		//"node.Pipe.tr.ParseName",
 	}
 
 	mapper := frame.Mapper{
-		"RenderedManifest": "s.wr.buf",
-		"LineNumber":       "node.Pipe.Line",
-		"FileName":         "node.Pipe.tr.ParseName",
+		"Content": "string(s.wr.buf)",
+		//"CharPosition": "node.Pos",
+		//"FileName":     "node.tr.ParseName",
 	}
 
 	frame := &delegate.DelegateFrame{

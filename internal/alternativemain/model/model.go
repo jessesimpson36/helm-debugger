@@ -3,14 +3,44 @@ package model
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/jessesimpson36/helm-debugger/internal/breakpointevent"
 	"github.com/jessesimpson36/helm-debugger/internal/breakpoints"
 	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
+	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
 	"github.com/jessesimpson36/helm-debugger/internal/query"
-	"time"
 )
+
+func PrintFilteredExecutionFlows(flows []*executionflow.ExecutionFlow) {
+	for _, flow := range flows {
+		flow.Template.Display(false)
+		for _, helper := range flow.Helpers {
+			helper.Display(true)
+		}
+		fmt.Println("Relevant Values")
+		for _, valRef := range flow.ValuesReference {
+			fmt.Printf("- %s\n", valRef.ValuesName)
+		}
+		fmt.Println("WriteBuffer")
+		var prevBuffer *frame.RenderedLine
+		for _, capturedBuffer := range flow.RenderedManifest {
+			//fmt.Println("- " + capturedBuffer.FileName)
+			if prevBuffer != nil {
+				if strings.HasPrefix(capturedBuffer.Content, prevBuffer.Content) {
+					fmt.Println("- \n" + strings.TrimPrefix(capturedBuffer.Content, prevBuffer.Content))
+				}
+			} else {
+				fmt.Println("- " + capturedBuffer.Content)
+			}
+			prevBuffer = capturedBuffer
+		}
+		fmt.Println("--------------------------------------------------")
+	}
+}
 
 func Main() error {
 	dlvController := &dlvcontroller.RPCDlvController{}
@@ -23,6 +53,7 @@ func Main() error {
 	frames := []*delegate.DelegateFrame{
 		breakpoints.GetLineStartFrame(),
 		breakpoints.GetConditionalFrame(),
+		breakpoints.GetRenderedManifestFrame(),
 	}
 	err = dlvController.Configure(ctx, rpcClient, frames)
 	if err != nil {
@@ -53,10 +84,14 @@ func Main() error {
 		}
 
 		var currentFrame *delegate.DelegateFrame
-		for i, frame := range frames {
-			if state.CurrentThread.Breakpoint != nil && state.CurrentThread.Breakpoint.Name == frame.Breakpoints[i].Name {
-				currentFrame = frame
+		for _, frame := range frames {
+			for _, breakpoint := range frame.Breakpoints {
+				if state.CurrentThread.Breakpoint != nil && state.CurrentThread.Breakpoint.Name == breakpoint.Name {
+					currentFrame = frame
+					break
+				}
 			}
+
 			if state.CurrentThread.Breakpoint != nil && (state.CurrentThread.Breakpoint.Name == "conditionalevaluatedtrue" || state.CurrentThread.Breakpoint.Name == "conditionalevaluatedfalse") {
 				// not doing anything with these breakpoints yet
 				state = <-rpcClient.Continue()
@@ -72,11 +107,14 @@ func Main() error {
 		respVars, err := currentFrame.Gather(rpcClient)
 		if err != nil {
 			// do nothing since this is noisy
-			// println("Error gathering variables: " + err.Error())
+			println("Error gathering variables: " + err.Error())
 		} else {
 			breakpointEvent, err := currentFrame.Bind(respVars)
 			if err != nil {
 				// do nothing since this is noisy
+				if strings.HasPrefix(currentFrame.Breakpoints[0].Name, "rendered") {
+					println("Error binding: " + err.Error())
+				}
 			}
 			breakpointEvents = append(breakpointEvents, breakpointEvent)
 		}
@@ -96,48 +134,15 @@ func Main() error {
 	}
 
 	afterQueryValuesReferences := query.QueryValuesReference(executionFlows, valuesQuery)
-
-	for _, flow := range afterQueryValuesReferences {
-		flow.Template.Display(false)
-		for _, helper := range flow.Helpers {
-			helper.Display(true)
-		}
-		fmt.Println("Relevant Values")
-		for _, valRef := range flow.ValuesReference {
-			fmt.Printf("- %s\n", valRef.ValuesName)
-		}
-		fmt.Println("--------------------------------------------------")
-	}
+	PrintFilteredExecutionFlows(afterQueryValuesReferences)
 
 	fmt.Println("================= HELPERS QUERY =================")
 	afterQueryHelpers := query.QueryHelpers(executionFlows, []string{"test.serviceAccountName"})
-
-	for _, flow := range afterQueryHelpers {
-		flow.Template.Display(false)
-		for _, helper := range flow.Helpers {
-			helper.Display(true)
-		}
-		fmt.Println("Relevant Values")
-		for _, valRef := range flow.ValuesReference {
-			fmt.Printf("- %s\n", valRef.ValuesName)
-		}
-		fmt.Println("--------------------------------------------------")
-	}
+	PrintFilteredExecutionFlows(afterQueryHelpers)
 
 	fmt.Println("================= TEMPLATE QUERY =================")
 	afterQueryTemplate := query.QueryTemplate(executionFlows, []string{"test/templates/deployment.yaml:42"})
-
-	for _, flow := range afterQueryTemplate {
-		flow.Template.Display(false)
-		for _, helper := range flow.Helpers {
-			helper.Display(true)
-		}
-		fmt.Println("Relevant Values")
-		for _, valRef := range flow.ValuesReference {
-			fmt.Printf("- %s\n", valRef.ValuesName)
-		}
-		fmt.Println("--------------------------------------------------")
-	}
+	PrintFilteredExecutionFlows(afterQueryTemplate)
 
 	return nil
 }

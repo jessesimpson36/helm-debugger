@@ -15,9 +15,9 @@ type Frame struct {
 }
 
 type RenderedLine struct {
-	LineNumber int
-	FileName   string
-	Content    string
+	//CharPosition int
+	//FileName     string
+	Content string
 }
 
 type ExecutionUnit struct {

@@ -2,10 +2,10 @@ package renderedmanifest
 
 import (
 	"fmt"
+
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
-	"strconv"
 )
 
 // A mapper is helps bind a variable name to a common type
@@ -50,15 +50,15 @@ func (f *RenderedManifestFrame) Bind(respVars map[string]string) (*frame.BindRes
 		}
 		switch key {
 		case "Content":
-			renderedLine.Content = mappedVal
-		case "LineNumber":
-			lineNum, err := strconv.Atoi(mappedVal)
-			if err != nil {
-				return nil, fmt.Errorf("Failed to convert LineNumber to int: %w", err)
-			}
-			renderedLine.LineNumber = lineNum
-		case "FileName":
-			renderedLine.FileName = mappedVal
+			renderedLine.Content = string(mappedVal)
+		//case "CharPosition":
+		//	charPos, err := strconv.Atoi(mappedVal)
+		//	if err != nil {
+		//		return nil, fmt.Errorf("Failed to convert LineNumber to int: %w", err)
+		//	}
+		//	renderedLine.CharPosition = charPos
+		//case "FileName":
+		//	renderedLine.FileName = mappedVal
 		default:
 			return nil, fmt.Errorf("Unknown key in mapper: %s", key)
 		}

@@ -8,7 +8,6 @@ import (
 	"os"
 )
 
-
 func ReadOneLine(fileName string, lineNumber int) (string, error) {
 	file, err := os.Open(fileName)
 	if err != nil {
