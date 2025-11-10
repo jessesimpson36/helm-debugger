@@ -1,8 +1,9 @@
 package query
 
 import (
-	"strings"
 	"strconv"
+	"strings"
+
 	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
 )
 
@@ -79,6 +80,50 @@ func QueryTemplate(flows []*executionflow.ExecutionFlow, selectedTemplateLineNum
 			if found {
 				break
 			}
+		}
+	}
+	return filteredFlows
+}
+
+// selectedRenderedTemplateLineNumbers are line numbers in string format filename:lineNumber (e.g., "templates/deployment.yaml:300")
+func QueryRenderedTemplate(flows []*executionflow.ExecutionFlow, selectedRenderedTemplateLineNumbers []string) []*executionflow.ExecutionFlow {
+	filteredFlows := []*executionflow.ExecutionFlow{}
+	for _, flow := range flows {
+		found := false
+		for _, fileLineCombo := range selectedRenderedTemplateLineNumbers {
+			splitOutput := strings.Split(fileLineCombo, ":")
+			if len(splitOutput) != 2 {
+				continue
+			}
+			selectedFile := splitOutput[0]
+			selectedLineStr := splitOutput[1]
+			selectedLine, err := strconv.Atoi(selectedLineStr)
+			if err != nil {
+				continue
+			}
+			if strings.HasPrefix(flow.Template.FileName, selectedFile) {
+				if len(flow.RenderedManifest) > 1 {
+					first := flow.RenderedManifest[0]
+					last := flow.RenderedManifest[len(flow.RenderedManifest)-1]
+					lowerBound := len(strings.Split(first.Content, "\n"))
+					upperBound := len(strings.Split(last.Content, "\n"))
+					if selectedLine > lowerBound && selectedLine < upperBound {
+						filteredFlows = append(filteredFlows, flow)
+						found = true
+						break
+					}
+
+				} else if len(flow.RenderedManifest) == 1 {
+					if len(strings.Split(flow.RenderedManifest[0].Content, "\n")) > selectedLine {
+						filteredFlows = append(filteredFlows, flow)
+						found = true
+						break
+					}
+				}
+			}
+		}
+		if found {
+			break
 		}
 	}
 	return filteredFlows

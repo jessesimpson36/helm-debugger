@@ -34,7 +34,9 @@ func PrintFilteredExecutionFlows(flows []*executionflow.ExecutionFlow) {
 					fmt.Println("- \n" + strings.TrimPrefix(capturedBuffer.Content, prevBuffer.Content))
 				}
 			} else {
-				fmt.Println("- " + capturedBuffer.Content)
+				for i, line := range strings.Split(capturedBuffer.Content, "\n") {
+					fmt.Printf("%4d  %s\n", i, line)
+				}
 			}
 			prevBuffer = capturedBuffer
 		}
@@ -143,6 +145,10 @@ func Main() error {
 	fmt.Println("================= TEMPLATE QUERY =================")
 	afterQueryTemplate := query.QueryTemplate(executionFlows, []string{"test/templates/deployment.yaml:42"})
 	PrintFilteredExecutionFlows(afterQueryTemplate)
+
+	fmt.Println("================= RENDERED QUERY =================")
+	afterRenderedQueryTemplate := query.QueryRenderedTemplate(executionFlows, []string{"test/templates/deployment.yaml:32"})
+	PrintFilteredExecutionFlows(afterRenderedQueryTemplate)
 
 	return nil
 }
