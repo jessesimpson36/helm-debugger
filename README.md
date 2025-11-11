@@ -3,7 +3,7 @@
 
 ## Overview
 
-This project allows you to debug helm charts and hopefully answer how your values.yaml options change across `_helper.tpl` functions and eventually make it into the final rendered manifests.
+This project allows you to debug helm charts and hopefully answer how your `values.yaml` options change across `_helper.tpl` functions and eventually make it into the final rendered manifests.
 
 The debugger makes use of dlv because golangs text/template library will process entire files at a time, making it difficult to track down individual operations without introspecting a running process.
 
