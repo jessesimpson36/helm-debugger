@@ -1,27 +1,27 @@
-
 package main
 
 import (
-	"os"
 	"github.com/jessesimpson36/helm-debugger/internal/alternativemain/branch"
 	"github.com/jessesimpson36/helm-debugger/internal/alternativemain/line"
 	"github.com/jessesimpson36/helm-debugger/internal/alternativemain/model"
+	"github.com/jessesimpson36/helm-debugger/internal/settings"
 )
 
 func main() {
-	args := os.Args
-	if len(args) > 1 && args[1] == "branch" {
-		err := branch.Main()
+	settings := settings.NewSettings()
+
+	if settings.Mode == "branch" {
+		err := branch.Main(settings)
 		if err != nil {
 			panic(err)
 		}
-	} else if len(args) > 1 && args[1] == "line" {
-		err := line.Main()
+	} else if settings.Mode == "line" {
+		err := line.Main(settings)
 		if err != nil {
 			panic(err)
 		}
-	} else if len(args) > 1 && args[1] == "model" {
-		err := model.Main()
+	} else if settings.Mode == "model" {
+		err := model.Main(settings)
 		if err != nil {
 			panic(err)
 		}

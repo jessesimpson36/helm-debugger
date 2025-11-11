@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
+	"github.com/jessesimpson36/helm-debugger/internal/settings"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -22,11 +22,11 @@ type DlvController interface {
 
 type RPCDlvController struct{}
 
-func (r *RPCDlvController) StartSession(ctx context.Context) (*rpc2.RPCClient, error) {
+func (r *RPCDlvController) StartSession(ctx context.Context, settings *settings.Settings) (*rpc2.RPCClient, error) {
 	// helm template . --show-only templates/deployment.yaml
-	chartName := os.Args[2]
-	args := os.Args[3:]
-	cmd := exec.CommandContext(ctx, "bash", "-c", "dlv exec --headless --listen localhost:10122 ./helm/bin/helm -- template "+chartName+" "+strings.Join(args, " "))
+	chartName := settings.ChartName
+	args := settings.CommandArgs
+	cmd := exec.CommandContext(ctx, "bash", "-c", "dlv exec --headless --listen localhost:10122 ./helm/bin/helm -- template "+chartName+" "+args)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()

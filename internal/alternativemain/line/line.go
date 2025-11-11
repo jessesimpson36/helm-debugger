@@ -5,13 +5,14 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/breakpoints"
 	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
+	"github.com/jessesimpson36/helm-debugger/internal/settings"
 	"time"
 )
 
-func Main() error {
+func Main(settings *settings.Settings) error {
 	dlvController := &dlvcontroller.RPCDlvController{}
 	ctx := context.Background()
-	rpcClient, err := dlvController.StartSession(ctx)
+	rpcClient, err := dlvController.StartSession(ctx, settings)
 	if err != nil {
 		return err
 	}

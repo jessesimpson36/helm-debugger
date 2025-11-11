@@ -1,5 +1,5 @@
 
-.PHONY: clone_helm compile_helm build run
+.PHONY: clone_helm compile_helm build run test_values_query test_helpers_query test_template_query test_rendered_query test_all_queries
 
 all: build run
 
@@ -14,5 +14,25 @@ compile_helm:
 build:
 	go build
 
-run:
-	go run . model test --show-only templates/deployment.yaml
+run: test_all_queries
+
+test_values_query:
+	go run . --mode model --values image.tag --chart test --extra-command-args '--show-only templates/deployment.yaml'
+
+test_helpers_query:
+	go run . --mode model --helper-file test.serviceAccountName --chart test --extra-command-args '--show-only templates/deployment.yaml'
+
+test_template_query:
+	go run . --mode model --template-file test/templates/deployment.yaml:42 --chart test --extra-command-args '--show-only templates/deployment.yaml'
+
+test_rendered_query:
+	go run . --mode model --rendered-file test/templates/deployment.yaml:32 --chart test --extra-command-args '--show-only templates/deployment.yaml'
+
+test_all_queries:
+	go run . --mode model \
+		--rendered-file test/templates/deployment.yaml:32 \
+		--template-file test/templates/deployment.yaml:42 \
+		--helper-file test.serviceAccountName \
+		--values image.tag \
+		--chart test \
+		--extra-command-args '--show-only templates/deployment.yaml'

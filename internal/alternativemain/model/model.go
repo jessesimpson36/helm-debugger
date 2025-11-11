@@ -13,6 +13,7 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
 	"github.com/jessesimpson36/helm-debugger/internal/query"
+	"github.com/jessesimpson36/helm-debugger/internal/settings"
 )
 
 func PrintFilteredExecutionFlows(flows []*executionflow.ExecutionFlow) {
@@ -46,10 +47,10 @@ func PrintFilteredExecutionFlows(flows []*executionflow.ExecutionFlow) {
 	}
 }
 
-func Main() error {
+func Main(settings *settings.Settings) error {
 	dlvController := &dlvcontroller.RPCDlvController{}
 	ctx := context.Background()
-	rpcClient, err := dlvController.StartSession(ctx)
+	rpcClient, err := dlvController.StartSession(ctx, settings)
 	if err != nil {
 		return err
 	}
@@ -132,25 +133,29 @@ func Main() error {
 
 	executionFlows := breakpointevent.Process(breakpointEvents)
 
-	fmt.Println("================= VALUES QUERY =================")
-	valuesQuery := []string{
-		"image.tag",
+	if len(settings.ValuesQuery) > 0 {
+		fmt.Println("================= VALUES QUERY =================")
+		afterQueryValuesReferences := query.QueryValuesReference(executionFlows, settings.ValuesQuery)
+		PrintFilteredExecutionFlows(afterQueryValuesReferences)
 	}
 
-	afterQueryValuesReferences := query.QueryValuesReference(executionFlows, valuesQuery)
-	PrintFilteredExecutionFlows(afterQueryValuesReferences)
+	if len(settings.HelpersQueryFiles) > 0 {
+		fmt.Println("================= HELPERS QUERY =================")
+		afterQueryHelpers := query.QueryHelpers(executionFlows, settings.HelpersQueryFiles)
+		PrintFilteredExecutionFlows(afterQueryHelpers)
+	}
 
-	fmt.Println("================= HELPERS QUERY =================")
-	afterQueryHelpers := query.QueryHelpers(executionFlows, []string{"test.serviceAccountName"})
-	PrintFilteredExecutionFlows(afterQueryHelpers)
+	if len(settings.TemplateQueryFiles) > 0 {
+		fmt.Println("================= TEMPLATE QUERY =================")
+		afterQueryTemplate := query.QueryTemplate(executionFlows, settings.TemplateQueryFiles)
+		PrintFilteredExecutionFlows(afterQueryTemplate)
+	}
 
-	fmt.Println("================= TEMPLATE QUERY =================")
-	afterQueryTemplate := query.QueryTemplate(executionFlows, []string{"test/templates/deployment.yaml:42"})
-	PrintFilteredExecutionFlows(afterQueryTemplate)
-
-	fmt.Println("================= RENDERED QUERY =================")
-	afterRenderedQueryTemplate := query.QueryRenderedTemplate(executionFlows, []string{"test/templates/deployment.yaml:32"})
-	PrintFilteredExecutionFlows(afterRenderedQueryTemplate)
+	if len(settings.RenderedQueryFiles) > 0 {
+		fmt.Println("================= RENDERED QUERY =================")
+		afterRenderedQueryTemplate := query.QueryRenderedTemplate(executionFlows, settings.RenderedQueryFiles)
+		PrintFilteredExecutionFlows(afterRenderedQueryTemplate)
+	}
 
 	return nil
 }
