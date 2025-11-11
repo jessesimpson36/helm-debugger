@@ -93,3 +93,171 @@ make
 ```
 
 The Makefile includes examples on how to work with the arguments.
+
+## Example output and what it means
+
+Full output:
+```
+================= HELPERS QUERY =================
+test/templates/serviceaccount.yaml:5
+      name: {{ include "test.serviceAccountName" . }}
+  test/templates/_helpers.tpl:57
+    in test.serviceAccountName
+      {{- if .Values.serviceAccount.create }}
+  test/templates/_helpers.tpl:57
+    in test.serviceAccountName
+      {{- if .Values.serviceAccount.create }}
+  test/templates/_helpers.tpl:58
+    in test.serviceAccountName
+      {{- default (include "test.fullname" .) .Values.serviceAccount.name }}
+  test/templates/_helpers.tpl:14
+    in test.fullname
+      {{- if .Values.fullnameOverride }}
+  test/templates/_helpers.tpl:14
+    in test.fullname
+      {{- if .Values.fullnameOverride }}
+  test/templates/_helpers.tpl:17
+    in test.fullname
+      {{- $name := default .Chart.Name .Values.nameOverride }}
+  test/templates/_helpers.tpl:18
+    in test.fullname
+      {{- if contains $name .Release.Name }}
+  test/templates/_helpers.tpl:18
+    in test.fullname
+      {{- if contains $name .Release.Name }}
+  test/templates/_helpers.tpl:21
+    in test.fullname
+      {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+
+Relevant Values
+- serviceAccount.create
+- serviceAccount.create
+- serviceAccount.name
+- fullnameOverride
+- fullnameOverride
+- nameOverride
+
+WriteBuffer
+   0  apiVersion: v1
+   1  kind: ServiceAccount
+   2  metadata:
+   3    name: release-name-test
+```
+
+### Breakdown
+
+#### Execution flow
+```
+test/templates/serviceaccount.yaml:5
+      name: {{ include "test.serviceAccountName" . }}
+  test/templates/_helpers.tpl:57
+    in test.serviceAccountName
+      {{- if .Values.serviceAccount.create }}
+  test/templates/_helpers.tpl:57
+    in test.serviceAccountName
+      {{- if .Values.serviceAccount.create }}
+  test/templates/_helpers.tpl:58
+    in test.serviceAccountName
+      {{- default (include "test.fullname" .) .Values.serviceAccount.name }}
+  test/templates/_helpers.tpl:14
+    in test.fullname
+      {{- if .Values.fullnameOverride }}
+  test/templates/_helpers.tpl:14
+    in test.fullname
+      {{- if .Values.fullnameOverride }}
+  test/templates/_helpers.tpl:17
+    in test.fullname
+      {{- $name := default .Chart.Name .Values.nameOverride }}
+  test/templates/_helpers.tpl:18
+    in test.fullname
+      {{- if contains $name .Release.Name }}
+  test/templates/_helpers.tpl:18
+    in test.fullname
+      {{- if contains $name .Release.Name }}
+  test/templates/_helpers.tpl:21
+    in test.fullname
+      {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+```
+
+This part is the **Execution flow**. It shows each line that got executed on it's way to being rendered.
+
+#### Relevant Values
+
+```
+Relevant Values
+- serviceAccount.create
+- serviceAccount.create
+- serviceAccount.name
+- fullnameOverride
+- fullnameOverride
+- nameOverride
+```
+
+Any time the execution flow references a `values.yaml` option via the `.Values` keyword, it gets captured here. One day I'd like for the actual values to be shown here too, but for now, it tells the user that you should focus on these `values.yaml` options when debugging the function.
+
+
+#### WriteBuffer
+
+```
+WriteBuffer
+   0  apiVersion: v1
+   1  kind: ServiceAccount
+   2  metadata:
+   3    name: release-name-test
+```
+
+The write buffer is the rendered output. In golangs text/template library, the write buffer is a string builder that I captured the contents of. In most cases, I try to display a diff of the before/after the execution flow happens, but in this case, it was the first function, so the entire file was added to the buffer at once.
+
+A different WriteBuffer that shows the changes might look like the following:
+
+```diff
+WriteBuffer
+   0  apiVersion: apps/v1
+   1  kind: Deployment
+   2  metadata:
+   3    name: release-name-test
+   4    labels:
+   5      helm.sh/chart: test-0.1.0
+   6      app.kubernetes.io/name: test
+   7      app.kubernetes.io/instance: release-name
+   8      app.kubernetes.io/version: "1.16.0"
+   9      app.kubernetes.io/managed-by: Helm
+  10  spec:
+  11    replicas: 1
+  12    selector:
+  13      matchLabels:
+  14        app.kubernetes.io/name: test
+  15        app.kubernetes.io/instance: release-name
+  16    template:
+  17      metadata:
+  18        labels:
+  19          helm.sh/chart: test-0.1.0
+  20          app.kubernetes.io/name: test
+  21          app.kubernetes.io/instance: release-name
+  22          app.kubernetes.io/version: "1.16.0"
+  23          app.kubernetes.io/managed-by: Helm
+  24      spec:
+  25        serviceAccountName: release-name-test
+  26        containers:
+  27          - name: test
+  28            image: "nginx:1.16.0"
+  29            imagePullPolicy: IfNotPresent
++     
++               ports:
++                 - name: http
++                   containerPort: 80
+```
+
+The write buffer display might also glitch out a little if there are multiple functions being called on the same line. such as:
+
+```
+  24      spec:
+  25        serviceAccountName: release-name-test
+  26        containers:
+  27          - name: test
+  28            image: "nginx:1.16.0
++     "
++               imagePullPolicy: IfNotPresent
+```
+
+The quote does get rendered correctly, but the print of the write buffer doesn't know that.
