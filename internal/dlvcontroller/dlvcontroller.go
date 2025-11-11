@@ -26,7 +26,7 @@ func (r *RPCDlvController) StartSession(ctx context.Context, settings *settings.
 	// helm template . --show-only templates/deployment.yaml
 	chartName := settings.ChartName
 	args := settings.CommandArgs
-	cmd := exec.CommandContext(ctx, "bash", "-c", "dlv exec --headless --listen localhost:10122 ./helm/bin/helm -- template "+chartName+" "+args)
+	cmd := exec.CommandContext(ctx, "bash", "-c", "dlv exec --headless --listen localhost:10122 " + settings.CompiledHelmPath + " -- template "+chartName+" "+args)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()

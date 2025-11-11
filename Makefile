@@ -17,19 +17,20 @@ build:
 run: test_all_queries
 
 test_values_query:
-	go run . --mode model --values image.tag --chart test --extra-command-args '--show-only templates/deployment.yaml'
+	go run . --mode model --helm-path ./helm/bin/helm --values image.tag --chart test --extra-command-args '--show-only templates/deployment.yaml'
 
 test_helpers_query:
-	go run . --mode model --helper-file test.serviceAccountName --chart test --extra-command-args '--show-only templates/deployment.yaml'
+	go run . --mode model --helm-path ./helm/bin/helm --helper-file test.serviceAccountName --chart test --extra-command-args '--show-only templates/deployment.yaml'
 
 test_template_query:
-	go run . --mode model --template-file test/templates/deployment.yaml:42 --chart test --extra-command-args '--show-only templates/deployment.yaml'
+	go run . --mode model --helm-path ./helm/bin/helm --template-file test/templates/deployment.yaml:42 --chart test --extra-command-args '--show-only templates/deployment.yaml'
 
 test_rendered_query:
-	go run . --mode model --rendered-file test/templates/deployment.yaml:32 --chart test --extra-command-args '--show-only templates/deployment.yaml'
+	go run . --mode model --helm-path ./helm/bin/helm --rendered-file test/templates/deployment.yaml:32 --chart test --extra-command-args '--show-only templates/deployment.yaml'
 
 test_all_queries:
 	go run . --mode model \
+		--helm-path ./helm/bin/helm \
 		--rendered-file test/templates/deployment.yaml:32 \
 		--template-file test/templates/deployment.yaml:42 \
 		--helper-file test.serviceAccountName \
