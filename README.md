@@ -31,11 +31,11 @@ Other apps:
 
 ## Concepts / Terminology
 
-This program starts a headless golang debugger in the background and translates places in memory of that debugger to helm chart logic. In the context of this program, I often refer to this as *Breakpoints*, even though there is not yet an interactive debugging mode of this program.
+This program starts a headless golang debugger in the background and translates places in memory of that debugger to helm chart logic. In the context of this program, I often refer to this as **Breakpoints**, even though there is not yet an interactive debugging mode of this program.
 
-The execution *modes* of this program are simply alternative main functions I've been trying out to see which is most useful. I might remove the not-so-useful ones.
+The execution **modes** of this program are simply alternative main functions I've been trying out to see which is most useful. I might remove the not-so-useful ones.
 
-*Execution flow* refers to the linear path the program takes executing instructions after if/else conditions are evaluated. This may look a bit like a stacktrace, but it's not.
+**Execution flow** refers to the linear path the program takes executing instructions after if/else conditions are evaluated. This may look a bit like a stacktrace, but it's not.
 
 ### Compiling Helm
 
