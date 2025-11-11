@@ -104,15 +104,9 @@ test/templates/serviceaccount.yaml:5
   test/templates/_helpers.tpl:57
     in test.serviceAccountName
       {{- if .Values.serviceAccount.create }}
-  test/templates/_helpers.tpl:57
-    in test.serviceAccountName
-      {{- if .Values.serviceAccount.create }}
   test/templates/_helpers.tpl:58
     in test.serviceAccountName
       {{- default (include "test.fullname" .) .Values.serviceAccount.name }}
-  test/templates/_helpers.tpl:14
-    in test.fullname
-      {{- if .Values.fullnameOverride }}
   test/templates/_helpers.tpl:14
     in test.fullname
       {{- if .Values.fullnameOverride }}
@@ -122,18 +116,13 @@ test/templates/serviceaccount.yaml:5
   test/templates/_helpers.tpl:18
     in test.fullname
       {{- if contains $name .Release.Name }}
-  test/templates/_helpers.tpl:18
-    in test.fullname
-      {{- if contains $name .Release.Name }}
   test/templates/_helpers.tpl:21
     in test.fullname
       {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
 
 Relevant Values
 - serviceAccount.create
-- serviceAccount.create
 - serviceAccount.name
-- fullnameOverride
 - fullnameOverride
 - nameOverride
 
@@ -148,11 +137,8 @@ WriteBuffer
 
 #### Execution flow
 ```
-test/templates/serviceaccount.yaml:5
-      name: {{ include "test.serviceAccountName" . }}
-  test/templates/_helpers.tpl:57
-    in test.serviceAccountName
-      {{- if .Values.serviceAccount.create }}
+test/templates/deployment.yaml:30
+          serviceAccountName: {{ include "test.serviceAccountName" . }}
   test/templates/_helpers.tpl:57
     in test.serviceAccountName
       {{- if .Values.serviceAccount.create }}
@@ -162,15 +148,9 @@ test/templates/serviceaccount.yaml:5
   test/templates/_helpers.tpl:14
     in test.fullname
       {{- if .Values.fullnameOverride }}
-  test/templates/_helpers.tpl:14
-    in test.fullname
-      {{- if .Values.fullnameOverride }}
   test/templates/_helpers.tpl:17
     in test.fullname
       {{- $name := default .Chart.Name .Values.nameOverride }}
-  test/templates/_helpers.tpl:18
-    in test.fullname
-      {{- if contains $name .Release.Name }}
   test/templates/_helpers.tpl:18
     in test.fullname
       {{- if contains $name .Release.Name }}
@@ -186,9 +166,7 @@ This part is the **Execution flow**. It shows each line that got executed on it'
 ```
 Relevant Values
 - serviceAccount.create
-- serviceAccount.create
 - serviceAccount.name
-- fullnameOverride
 - fullnameOverride
 - nameOverride
 ```
