@@ -11,6 +11,13 @@ compile_helm:
 	sed -i 's/GOFLAGS\s*:=.*/GOFLAGS := -gcflags="all=-N -l"/' helm/Makefile
 	cd helm && make
 
+clone_dlv:
+	git clone https://github.com/go-delve/delve
+
+compile_dlv:
+	sed -i 's/go \s*.*/go 1.25.3/' delve/go.mod
+	cd delve && make build
+
 build:
 	go build
 

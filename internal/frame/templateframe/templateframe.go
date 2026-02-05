@@ -65,7 +65,7 @@ func (f *TemplateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 			return nil, fmt.Errorf("Unknown key in mapper: %s", key)
 		}
 		if execUnit.FunctionName != "" && execUnit.FileName != "" && execUnit.LineNumber != 0 {
-			lineContent, err := display.ReadOneLine(execUnit.FileName, execUnit.LineNumber)
+			lineContent, err := display.ResolveAndReadOneLine(execUnit.FileName, execUnit.LineNumber)
 			if err != nil {
 				return nil, fmt.Errorf("Failed to read line content: %w", err)
 			}
