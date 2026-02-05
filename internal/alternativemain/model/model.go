@@ -56,7 +56,7 @@ func Main(settings *settings.Settings) error {
 	}
 
 	frames := []*delegate.DelegateFrame{
-		breakpoints.GetLineStartFrame(),
+		breakpoints.GetLineStartFrame(settings.ChartName),
 		breakpoints.GetRenderedManifestFrame(),
 	}
 	err = dlvController.Configure(ctx, rpcClient, frames)

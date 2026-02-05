@@ -30,7 +30,7 @@ func NewSettings() *Settings {
 	flag.StringVar(&commaDelimitedHelpersQueryFiles, "helper-file", "", "Comma-delimited list of query files for helpers.")
 	flag.StringVar(&commaDelimitedValuesQuery, "values", "", "Comma-delimited list of values queries to capture.")
 	flag.StringVar(&settings.CommandArgs, "extra-command-args", "", "Additional command line arguments to pass to 'helm template' command.")
-	flag.StringVar(&settings.Mode, "mode", "all", "Mode of operation: model, branch, line")
+	flag.StringVar(&settings.Mode, "mode", "model", "Mode of operation: model, branch, line")
 	flag.StringVar(&settings.CompiledHelmPath, "helm-path", "helm", "Path to the compiled Helm binary.")
 
 	flag.Parse()

@@ -15,13 +15,18 @@ import (
 // ResolveAndReadOneLine resolves a template filename (which may include a chart name prefix)
 // to an actual file path and reads the specified line.
 //
+// Parameters:
+//   - chartPath: the path to the helm chart directory (from --chart flag)
+//   - fileName: the template filename (may include chart prefix like "camunda-platform/templates/foo.yaml")
+//   - lineNumber: the line to read
+//
 // Resolution order:
 // 1. Try to open the file as-is
 // 2. If the path has a chart prefix (e.g., "camunda-platform/templates/foo.yaml"):
-//   - Search CWD recursively for Chart.yaml files matching the chart name
+//   - Search chartPath recursively for Chart.yaml files matching the chart name
 //   - Check the charts/ directory for decompressed subcharts
 //   - Check the charts/ directory for .tgz archives
-func ResolveAndReadOneLine(fileName string, lineNumber int) (string, error) {
+func ResolveAndReadOneLine(chartPath string, fileName string, lineNumber int) (string, error) {
 	// 1. Try to open the file as-is
 	if fileExists(fileName) {
 		return ReadOneLine(fileName, lineNumber)
@@ -37,19 +42,25 @@ func ResolveAndReadOneLine(fileName string, lineNumber int) (string, error) {
 	chartPrefix := parts[0]
 	templatePath := parts[1]
 
-	// 3. Search CWD recursively for Chart.yaml files matching the chart name
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("failed to get current working directory: %w", err)
+	// Determine the base directory to search from
+	// If chartPath is provided, use it; otherwise fall back to CWD
+	baseDir := chartPath
+	if baseDir == "" {
+		var err error
+		baseDir, err = os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("failed to get current working directory: %w", err)
+		}
 	}
 
-	resolvedPath, err := findChartAndResolvePath(cwd, chartPrefix, templatePath)
+	// 3. Search baseDir recursively for Chart.yaml files matching the chart name
+	resolvedPath, err := findChartAndResolvePath(baseDir, chartPrefix, templatePath)
 	if err == nil && fileExists(resolvedPath) {
 		return ReadOneLine(resolvedPath, lineNumber)
 	}
 
 	// 4. Check the charts/ directory for decompressed subcharts
-	chartsDir := filepath.Join(cwd, "charts")
+	chartsDir := filepath.Join(baseDir, "charts")
 	if dirExists(chartsDir) {
 		// Try decompressed folder first (preferred)
 		decompressedPath := filepath.Join(chartsDir, chartPrefix, templatePath)
@@ -69,7 +80,13 @@ func ResolveAndReadOneLine(fileName string, lineNumber int) (string, error) {
 		return ReadOneLine(templatePath, lineNumber)
 	}
 
-	return "", fmt.Errorf("could not resolve file: %s (tried chart prefix '%s' with template path '%s')", fileName, chartPrefix, templatePath)
+	// 7. Try the template path relative to the base directory
+	relativeTemplatePath := filepath.Join(baseDir, templatePath)
+	if fileExists(relativeTemplatePath) {
+		return ReadOneLine(relativeTemplatePath, lineNumber)
+	}
+
+	return "", fmt.Errorf("could not resolve file: %s (tried chart prefix '%s' with template path '%s' in base dir '%s')", fileName, chartPrefix, templatePath, baseDir)
 }
 
 // findChartAndResolvePath searches for a Chart.yaml file whose name matches chartPrefix

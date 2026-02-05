@@ -23,7 +23,7 @@ import (
 // break text/template/exec.go:313
 //
 
-func GetConditionalFrame() *delegate.DelegateFrame {
+func GetConditionalFrame(chartPath string) *delegate.DelegateFrame {
 	condStartRequestedBreakpoint := &api.Breakpoint{
 		Name: "conditionalstart",
 		File: "text/template/exec.go",
@@ -62,12 +62,13 @@ func GetConditionalFrame() *delegate.DelegateFrame {
 		Breakpoints: breakpoints,
 		ReqVars:     reqVars,
 		Mapper:      mapper,
+		ChartPath:   chartPath,
 	}
 
 	return frame
 }
 
-func GetLineStartFrame() *delegate.DelegateFrame {
+func GetLineStartFrame(chartPath string) *delegate.DelegateFrame {
 	lineStartBreakpoint := &api.Breakpoint{
 		Name: "linestart",
 		File: "text/template/exec.go",
@@ -93,6 +94,7 @@ func GetLineStartFrame() *delegate.DelegateFrame {
 		Breakpoints: breakpoints,
 		ReqVars:     reqVars,
 		Mapper:      mapper,
+		ChartPath:   chartPath,
 	}
 
 	return frame

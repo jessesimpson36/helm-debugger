@@ -12,6 +12,7 @@ type Frame struct {
 	Breakpoints []*api.Breakpoint
 	ReqVars     []string
 	Mapper      Mapper
+	ChartPath   string // Path to the helm chart directory (from --chart flag)
 }
 
 type RenderedLine struct {
