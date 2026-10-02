@@ -9,7 +9,11 @@ func Process(breakpointEvents []*frame.BindResult) []*executionflow.ExecutionFlo
 	flows := []*executionflow.ExecutionFlow{}
 	first := true
 	executionFlow := &executionflow.ExecutionFlow{}
-	prevFlow := executionFlow
+	// prevFlow points at the most recently completed flow. When a new template
+	// starts, the next rendered buffer snapshot is the "after" state of the
+	// previous flow, so it is recorded there as well. It starts nil because the
+	// first flow has no preceding flow.
+	var prevFlow *executionflow.ExecutionFlow
 	for _, breakpointEvent := range breakpointEvents {
 		// if for whatever reason we hit breakpoints in helpers before hitting a template, then skip
 		if breakpointEvent == nil {

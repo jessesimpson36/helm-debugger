@@ -1,0 +1,22 @@
+# Deterministic helm debugger environment. Build with `docker compose build` or
+# `make docker-build`, then run CLI/MCP commands against a mounted workspace.
+services:
+  helm-debugger:
+    build:
+      context: .
+      args:
+        GO_VERSION: "1.26.7"
+        HELM_VERSION: "v4.3.0"
+        DELVE_VERSION: "v1.27.2"
+    image: helm-debugger:dev
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    # Delve needs ptrace.
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    stdin_open: true
+    tty: false
+    # Default command is the MCP server (see Dockerfile CMD).

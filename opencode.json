@@ -1,0 +1,25 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "helm-debugger": {
+        "type": "local",
+        "command": [
+          "docker",
+          "run",
+          "--rm",
+          "-i",
+          "--cap-add=SYS_PTRACE",
+          "--security-opt",
+          "seccomp=unconfined",
+          "-v",
+          ".:/workspace",
+          "-w",
+          "/workspace",
+          "helm-debugger:dev"
+        ],
+        "cwd": "."
+      }
+    }
+  }
+}

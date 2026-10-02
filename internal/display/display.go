@@ -3,15 +3,25 @@ package display
 import (
 	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
+
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
-	"os"
 )
 
-func ReadOneLine(fileName string, lineNumber int) (string, error) {
-	file, err := os.Open(fileName)
+// ReadOneLine reads a single 1-based line from fileName. When fileName is
+// relative it is resolved against baseDir (which may be empty, meaning the
+// current directory).
+func ReadOneLine(baseDir, fileName string, lineNumber int) (string, error) {
+	path := fileName
+	if !filepath.IsAbs(path) && baseDir != "" {
+		path = filepath.Join(baseDir, path)
+	}
+
+	file, err := os.Open(path)
 	if err != nil {
-		fmt.Println("Error opening file:", err)
+		fmt.Fprintln(os.Stderr, "Error opening file:", err)
 		return "", err
 	}
 	defer file.Close()

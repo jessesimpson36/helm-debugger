@@ -1,0 +1,14 @@
+# Keep the build context small and deterministic.
+.git
+.gitignore
+.idea
+.vscode
+helm
+helm-debugger
+bin
+out
+Dockerfile
+docker-compose.yml
+README.md
+*.md
+tmp_*

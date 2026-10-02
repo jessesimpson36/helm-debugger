@@ -2,6 +2,7 @@ package frame
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
@@ -12,6 +13,7 @@ type Frame struct {
 	Breakpoints []*api.Breakpoint
 	ReqVars     []string
 	Mapper      Mapper
+	WorkingDir  string
 }
 
 type RenderedLine struct {
@@ -44,23 +46,23 @@ type FrameBinder interface {
 	Bind(respVars map[string]string) (*BindResult, error)
 }
 
-func (ex *BindResult) Display(isHelper bool) error {
+func (ex *BindResult) Display(w io.Writer, isHelper bool) error {
 	if ex.ExecutionUnit != nil {
-		return ex.ExecutionUnit.Display(isHelper)
+		return ex.ExecutionUnit.Display(w, isHelper)
 	}
 	return nil
 }
 
-func (ex *ExecutionUnit) Display(isHelper bool) error {
+func (ex *ExecutionUnit) Display(w io.Writer, isHelper bool) error {
 	indent := ""
 	if isHelper {
 		indent = "  "
 	}
-	fmt.Printf("%s%s:%d\n", indent, ex.FileName, ex.LineNumber)
+	fmt.Fprintf(w, "%s%s:%d\n", indent, ex.FileName, ex.LineNumber)
 	if ex.FunctionName != ex.FileName {
-		fmt.Printf("%s  in %s\n", indent, ex.FunctionName)
+		fmt.Fprintf(w, "%s  in %s\n", indent, ex.FunctionName)
 	}
-	fmt.Printf("%s    ", indent)
-	fmt.Print(ex.LineContent + "\n")
+	fmt.Fprintf(w, "%s    ", indent)
+	fmt.Fprint(w, ex.LineContent+"\n")
 	return nil
 }

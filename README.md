@@ -15,19 +15,41 @@ This is still pretty experimental / proof of concept.
 
 ## Requirements
 
-Delve version tested:
+The recommended way to run this project is the pinned Docker image, which
+provides every tool at a known version:
 
-```
-Delve Debugger
-Version: 1.25.1
-Build: $Id: 4e95e55b6b38b12e8509c91ec55261df1f7ee38f $
-```
+- Docker
 
-Other apps:
+To run it directly on your machine instead:
+
+- Delve (the Docker image pins v1.27.2)
 - Make
-- Helm
+- Helm (compiled with debug symbols, see below)
 - Git
-- Golang
+- Go (the Docker image pins the Go toolchain version)
+
+The debugger sets breakpoints in the Go standard library's
+`text/template/exec.go`. Those line numbers depend on the Go toolchain that
+compiled helm. Rather than hard-coding them, the debugger resolves them at
+runtime from `GOROOT` (see `internal/breakpoints/resolve.go`). When running the
+Docker image, the Go toolchain that built helm and the Go toolchain inside the
+image are the same, so this is automatic.
+
+### Determinism with Docker
+
+`make docker-build` builds an image from `Dockerfile` that pins:
+
+| Component | Default | Build arg |
+| --- | --- | --- |
+| Go toolchain | `1.26.7` | `GO_VERSION` |
+| Helm | `v4.3.0` (built with debug symbols) | `HELM_VERSION` |
+| Delve | `v1.27.2` | `DELVE_VERSION` |
+
+Override them at build time, for example:
+
+```bash
+make docker-build GO_VERSION=1.26.7 HELM_VERSION=v4.3.0 DELVE_VERSION=v1.27.2
+```
 
 ## Concepts / Terminology
 
@@ -49,6 +71,7 @@ One of the things I haven't quite worked out yet is if you have a helm chart tha
 - **model**: This mode builds a complete data structure representing all execution flows within the chart templates and helpers. Then allows you to query which execution flows you want to follow.
 - **branch**: This is the first mode I built and it only captures if/else conditions and whether they evaluate to true or false. It's not very useful. 
 - **line**: After writing the branch flow, I wanted to print out every line as it's processed. This mode is pretty overwhelming without being filtered.
+- **mcp**: Runs a Model Context Protocol server over stdio so AI tools can render and debug charts at runtime. See [MCP server](#mcp-server).
 
 
 ### Query types
@@ -65,26 +88,59 @@ Each time a breakpoint is hit, the program captures the execution path affecting
 ```
   -chart string
     	The name of the Helm chart to debug.
+  -debug-port int
+    	Port for the headless delve server. 0 picks a free port.
   -extra-command-args string
     	Additional command line arguments to pass to 'helm template' command.
+  -goroot string
+    	GOROOT used to resolve text/template breakpoints. Defaults to the debugger's own GOROOT.
   -helm-path string
     	Path to the compiled Helm binary. (default "helm")
   -helper-file string
     	Comma-delimited list of query files for helpers.
   -mode string
-    	Mode of operation: model, branch, line (default "all")
+    	Mode of operation: model, branch, line, mcp (default "model")
   -rendered-file string
     	Comma-delimited list of query files for rendered manifest.
   -template-file string
     	Comma-delimited list of query files for templates and helpers.
   -values string
     	Comma-delimited list of values queries to capture.
+  -working-dir string
+    	Directory the helm chart paths are relative to. Defaults to the current directory.
 ```
 
-## Running
+## Running with Docker
 
-(currently the project hardcodes the rendered manifest within the `test` folder)
-To run the debugger, clone this repository and run the following commands:
+The Docker image bundles a debug-enabled helm and the pinned toolchain, so
+there is nothing else to install:
+
+```bash
+make docker-build
+
+# Run the bundled model-mode smoke test against the test chart.
+make docker-test
+
+# Run the CLI interactively.
+make docker-run
+
+# Start the MCP server over stdio.
+make docker-mcp
+```
+
+Mount your own chart repository at `/workspace` and pass chart paths relative to
+it, e.g.:
+
+```bash
+docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+  -v /path/to/your/repo:/workspace -w /workspace \
+  helm-debugger:dev --mode model --helm-path helm --chart mychart \
+  --values image.tag --extra-command-args '--show-only templates/deployment.yaml'
+```
+
+## Running locally
+
+To build against a helm clone with debug symbols:
 
 ```bash
 make clone_helm
@@ -92,7 +148,64 @@ make compile_helm
 make
 ```
 
-The Makefile includes examples on how to work with the arguments.
+The local flow must be compiled with the same Go toolchain that built helm, or
+you can point at the right source tree with `-goroot`. The Makefile includes
+examples on how to work with the arguments.
+
+## MCP server
+
+`--mode mcp` starts a [Model Context Protocol](https://modelcontextprotocol.io/)
+server over stdio. This lets AI coding tools verify what a chart renders and
+why, at runtime, instead of guessing. It exposes three tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `helm_template` | Render a chart with `helm template` (fast sanity check). |
+| `debug_helm` | Run the chart under delve and report template/helper execution flows, relevant values, and the rendered buffer. |
+| `resolve_breakpoints` | Report the resolved `text/template/exec.go` line numbers, useful when debugging the debugger. |
+
+### opencode
+
+This repository ships an `opencode.json` that registers the server using the
+Docker image. Build the image first, then it is available to opencode in this
+project:
+
+```bash
+make docker-build
+opencode mcp list
+```
+
+`debug_helm` accepts filters analogous to the CLI flags. `chart` is a name or
+path relative to `working_dir`, or pass `chart_path` to point directly at a
+chart directory:
+
+```json
+{
+  "chart_path": "test",
+  "extra_args": ["--show-only", "templates/deployment.yaml"],
+  "values": ["image.tag"],
+  "helpers": ["test.serviceAccountName"],
+  "templates": ["test/templates/deployment.yaml:42"],
+  "rendered": ["test/templates/deployment.yaml:32"]
+}
+```
+
+Chart paths are relative to `/workspace` (the mounted repository). If you run
+the server outside Docker, use the local binary instead:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "helm-debugger": {
+        "type": "local",
+        "command": ["helm-debugger", "--mode", "mcp"],
+        "cwd": "."
+      }
+    }
+  }
+}
+```
 
 ## Example output and what it means
 

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.7"
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Unit tests
+        run: go test -short ./...
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build deterministic image
+        run: docker build -t helm-debugger:ci .
+      - name: Smoke test the debugger in the image
+        run: |
+          docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+            -v "$PWD:/workspace" -w /workspace helm-debugger:ci \
+            --mode model --helm-path helm --chart test --values image.tag \
+            --extra-command-args '--show-only templates/deployment.yaml'
