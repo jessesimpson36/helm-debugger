@@ -1,14 +1,17 @@
 .PHONY: all build test test-unit test-race test-integration vet fmt clean \
 	clone_helm compile_helm run \
 	test_values_query test_helpers_query test_template_query test_rendered_query test_all_queries \
-	docker-build docker-test docker-run docker-mcp docker-shell
+	docker-build docker-test docker-run docker-mcp docker-shell docker-push
 
 # Pinned toolchain versions for the deterministic Docker environment. Override
 # on the command line, e.g. `make docker-build GO_VERSION=1.26.7`.
 GO_VERSION    ?= 1.26.7
 HELM_VERSION  ?= v4.3.0
 DELVE_VERSION ?= v1.27.2
-IMAGE         ?= helm-debugger:dev
+IMAGE         ?= jessesimpson/helm-debugger:latest
+REGISTRY_REPO ?= jessesimpson/helm-debugger
+# Immutable tag that records exactly what the image contains.
+PUSH_TAG      ?= go$(GO_VERSION)-helm$(patsubst v%,%,$(HELM_VERSION))-delve$(patsubst v%,%,$(DELVE_VERSION))
 
 # Delve needs ptrace; the default seccomp profile blocks it on many kernels.
 DOCKER_RUN_FLAGS := --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined
@@ -87,6 +90,13 @@ docker-build:
 		--build-arg HELM_VERSION=$(HELM_VERSION) \
 		--build-arg DELVE_VERSION=$(DELVE_VERSION) \
 		-t $(IMAGE) .
+
+# Publish both the moving `latest` tag and an immutable tag describing the
+# exact toolchain versions baked into the image.
+docker-push: docker-build
+	docker push $(IMAGE)
+	docker tag $(IMAGE) $(REGISTRY_REPO):$(PUSH_TAG)
+	docker push $(REGISTRY_REPO):$(PUSH_TAG)
 
 # Run the bundled model-mode smoke test against the test chart inside the image.
 docker-test: docker-build

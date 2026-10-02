@@ -10,7 +10,7 @@ Never answer a question about what a chart renders from intuition alone.
 
 ## Prerequisites
 
-The server runs a pinned Docker image (`helm-debugger:dev`). If a tool call
+The server runs a pinned Docker image (`jessesimpson/helm-debugger:latest`). If a tool call
 reports that the image is missing, build it once from the helm-debugger
 repository:
 

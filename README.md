@@ -112,8 +112,22 @@ Each time a breakpoint is hit, the program captures the execution path affecting
 
 ## Running with Docker
 
-The Docker image bundles a debug-enabled helm and the pinned toolchain, so
-there is nothing else to install:
+A prebuilt image is published to Docker Hub as
+`jessesimpson/helm-debugger:latest`. An immutable tag describing the exact
+toolchain is pushed alongside it (for example
+`jessesimpson/helm-debugger:go1.26.7-helm4.3.0-delve1.27.2`); pin that tag or the
+digest if you need strict reproducibility. The image bundles a debug-enabled
+helm and the pinned toolchain, so there is nothing else to install:
+
+```bash
+# Use the published image. Docker pulls it on first run.
+docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+  -v "$PWD:/workspace" -w /workspace \
+  jessesimpson/helm-debugger:latest --mode model --helm-path helm --chart test \
+  --values image.tag --extra-command-args '--show-only templates/deployment.yaml'
+```
+
+Or build and use it locally:
 
 ```bash
 make docker-build
@@ -128,13 +142,20 @@ make docker-run
 make docker-mcp
 ```
 
+To publish a build, push both the moving `latest` tag and the immutable
+toolchain tag:
+
+```bash
+make docker-push
+```
+
 Mount your own chart repository at `/workspace` and pass chart paths relative to
 it, e.g.:
 
 ```bash
 docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
   -v /path/to/your/repo:/workspace -w /workspace \
-  helm-debugger:dev --mode model --helm-path helm --chart mychart \
+  jessesimpson/helm-debugger:latest --mode model --helm-path helm --chart mychart \
   --values image.tag --extra-command-args '--show-only templates/deployment.yaml'
 ```
 

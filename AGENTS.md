@@ -25,8 +25,10 @@ Workflow:
 
 Only use `resolve_breakpoints` when debugging the debugger itself.
 
-The MCP server runs the pinned Docker image, so the result does not depend on
-whatever Helm/Delve/Go is installed on the host. If a tool reports that the
-image is missing, build it once with `make docker-build`.
+The MCP server runs the published Docker image
+`jessesimpson/helm-debugger:latest`, so the result does not depend on whatever
+Helm/Delve/Go is installed on the host. If a tool reports that the image is
+missing, build and push it from this repository with `make docker-push` (or
+`make docker-build` for a local-only image), then reconnect the server.
 
 See the `helm-debugging` skill for the full workflow and how to read the output.

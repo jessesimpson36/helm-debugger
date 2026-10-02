@@ -16,7 +16,7 @@
           ".:/workspace",
           "-w",
           "/workspace",
-          "helm-debugger:dev"
+          "jessesimpson/helm-debugger:latest"
         ],
         "cwd": "."
       }
