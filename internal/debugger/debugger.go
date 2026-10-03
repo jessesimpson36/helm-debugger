@@ -193,19 +193,27 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 	}, nil
 }
 
-// applyAnchors sets each flow's anchor to the source line that invokes a queried
-// helper, when known, and removes the owner-template line from the helper list
-// if it duplicates the anchor. Without this the anchor would be whichever
-// owner-template node was captured first.
+// applyAnchors sets each flow's anchor to the source line that starts the chain
+// reaching a queried helper. When the include graph knows a call site it uses
+// that; otherwise the first captured owner-template line is the anchor. In both
+// cases the owner's other captured lines are removed from the helper list, since
+// the anchor represents the owner.
 func applyAnchors(flows []*executionflow.ExecutionFlow, anchors map[string]includegraph.CallSite, chartPath string) {
-	if len(anchors) == 0 {
-		return
-	}
 	for _, flow := range flows {
-		site, ok := anchors[flow.Owner]
-		if !ok {
+		if flow.Owner == "" {
 			continue
 		}
+		site, ok := anchors[flow.Owner]
+		if !ok {
+			// Fall back to the first captured owner-template line, which is a
+			// line that actually executed. It is a real line of the owner, so it
+			// is honest even when the graph could not find the call chain.
+			site = firstOwnerSite(flow)
+			if site.Line == 0 {
+				continue
+			}
+		}
+
 		content := ""
 		if line, err := display.ResolveAndReadOneLine(chartPath, flow.Owner, site.Line); err == nil {
 			content = line
@@ -216,18 +224,39 @@ func applyAnchors(flows []*executionflow.ExecutionFlow, anchors map[string]inclu
 			LineNumber:   site.Line,
 			LineContent:  content,
 		}
-		// Drop captured owner-template lines entirely: the anchor represents the
-		// owner, and its other nodes would otherwise sit between the anchor and
-		// the helper subtree as noise.
-		kept := flow.Helpers[:0]
-		for _, helper := range flow.Helpers {
-			if helper.FileName == flow.Owner {
-				continue
-			}
-			kept = append(kept, helper)
-		}
-		flow.Helpers = kept
+		flow.Helpers = dropOwnerLines(flow.Helpers, flow.Owner)
 	}
+}
+
+// firstOwnerSite returns the earliest captured line belonging to the flow's
+// owner template, or a zero CallSite when none was captured.
+func firstOwnerSite(flow *executionflow.ExecutionFlow) includegraph.CallSite {
+	best := includegraph.CallSite{}
+	if flow.Template != nil && flow.Template.FileName == flow.Owner {
+		best = includegraph.CallSite{File: flow.Owner, Line: flow.Template.LineNumber}
+	}
+	for _, helper := range flow.Helpers {
+		if helper.FileName != flow.Owner {
+			continue
+		}
+		if best.Line == 0 || helper.LineNumber < best.Line {
+			best = includegraph.CallSite{File: flow.Owner, Line: helper.LineNumber}
+		}
+	}
+	return best
+}
+
+// dropOwnerLines removes captured lines of the owner template from a flow's
+// helper list.
+func dropOwnerLines(helpers []*frame.ExecutionUnit, owner string) []*frame.ExecutionUnit {
+	kept := helpers[:0]
+	for _, helper := range helpers {
+		if helper.FileName == owner {
+			continue
+		}
+		kept = append(kept, helper)
+	}
+	return kept
 }
 
 // plan is the breakpoint configuration for a run.

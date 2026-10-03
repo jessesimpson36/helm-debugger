@@ -60,6 +60,32 @@ func TestAnchorFindsCallSite(t *testing.T) {
 	}
 }
 
+func TestAnchorFindsTransitiveCallSite(t *testing.T) {
+	// The owner calls midTransitively, which calls the target. The anchor must
+	// be the owner's call to midTransitively, not the target's call site (which
+	// is in a helper file, not the owner).
+	owner := "apiVersion: v1\nkind: Pod\nmetadata:\n  labels: {{ include \"chart.mid\" . }}\n"
+	helpers := "{{- define \"chart.mid\" -}}\n{{ include \"chart.target\" . }}\n{{- end -}}\n" +
+		"{{- define \"chart.target\" -}}\nx\n{{- end -}}\n"
+
+	g := &Graph{
+		directCalls: map[string]map[string]struct{}{},
+		unresolved:  map[string]bool{},
+		defined:     map[string]bool{},
+		callSites:   map[string][]CallSite{},
+	}
+	g.parseFile("templates/owner.yaml", owner)
+	g.parseFile("templates/_helpers.tpl", helpers)
+
+	site, ok := g.Anchor("mychart/templates/owner.yaml", []string{"chart.target"})
+	if !ok {
+		t.Fatal("expected a transitive anchor")
+	}
+	if site.Line != 4 {
+		t.Fatalf("anchor line = %d, want 4 (the call to chart.mid)", site.Line)
+	}
+}
+
 func TestClosureResolvesNestedIncludes(t *testing.T) {
 	g := parseString(t, sample)
 

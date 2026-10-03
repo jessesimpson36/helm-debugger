@@ -233,27 +233,84 @@ func (g *Graph) Unresolved(name string) bool {
 	return g.unresolved[name]
 }
 
-// Anchor returns the source location of the first call to any of callees that
-// appears in ownerRT, where ownerRT is a runtime template name (chart-prefixed,
-// for example "mychart/templates/deployment.yaml"). It lets the report anchor a
-// flow at the line that invokes the queried helper. The second result is false
-// when no call site matches.
+// Anchor returns the source location in ownerRT that leads to one of callees,
+// where ownerRT is a runtime template name (chart-prefixed, for example
+// "mychart/templates/deployment.yaml"). It lets the report anchor a flow at the
+// line that starts the chain reaching the queried helper.
+//
+// A rendered template often does not call the queried helper directly: it calls
+// another helper that reaches it transitively. Anchor therefore considers every
+// helper the owner calls directly and reports the earliest owner line whose
+// callee can reach any of callees. It falls back to a direct call site when one
+// exists. The second result is false when nothing matches.
 func (g *Graph) Anchor(ownerRT string, callees []string) (CallSite, bool) {
-	var best CallSite
+	want := map[string]struct{}{}
 	for _, callee := range callees {
-		for _, site := range g.callSites[callee] {
-			// Call sites are chart-relative ("templates/deployment.yaml") and
-			// runtime owner names are chart-prefixed
-			// ("mychart/templates/deployment.yaml"), so a suffix match ties them.
+		want[callee] = struct{}{}
+	}
+
+	// Collect the owner's direct call sites whose callee reaches a wanted name.
+	// Candidates are kept as (line, callee) so the earliest line wins and, at
+	// equal lines, the closest (shortest-path) callee is preferred.
+	type candidate struct {
+		line  int
+		depth int
+	}
+	bestByLine := map[int]candidate{}
+	consider := func(line, depth int) {
+		if cur, ok := bestByLine[line]; !ok || depth < cur.depth {
+			bestByLine[line] = candidate{line: line, depth: depth}
+		}
+	}
+
+	for callee, sites := range g.callSites {
+		if _, direct := want[callee]; !direct && !g.reachesAny(callee, want) {
+			continue
+		}
+		depth := 0
+		if _, direct := want[callee]; !direct {
+			depth = 1 // reached transitively
+		}
+		for _, site := range sites {
 			if !strings.HasSuffix(ownerRT, site.File) {
 				continue
 			}
-			if best.File == "" || site.Line < best.Line {
-				best = CallSite{File: ownerRT, Line: site.Line}
-			}
+			consider(site.Line, depth)
 		}
 	}
-	return best, best.File != ""
+
+	bestLine, found := 0, false
+	for line := range bestByLine {
+		if !found || line < bestLine {
+			bestLine, found = line, true
+		}
+	}
+	if !found {
+		return CallSite{}, false
+	}
+	return CallSite{File: ownerRT, Line: bestLine}, true
+}
+
+// reachesAny reports whether start can reach any name in targets by following
+// literal calls.
+func (g *Graph) reachesAny(start string, targets map[string]struct{}) bool {
+	seen := map[string]struct{}{}
+	stack := []string{start}
+	for len(stack) > 0 {
+		name := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		for callee := range g.directCalls[name] {
+			if _, want := targets[callee]; want {
+				return true
+			}
+			stack = append(stack, callee)
+		}
+	}
+	return false
 }
 
 // Closure returns the set of definition names reachable from roots by following
