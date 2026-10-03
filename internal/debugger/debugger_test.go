@@ -79,6 +79,61 @@ func TestRunAgainstLocalHelm(t *testing.T) {
 	}
 }
 
+// TestRunScopedOnlyCapture checks that a helper query served entirely by the
+// scoped Execute breakpoint (no walk breakpoint) still produces flows anchored
+// to the rendered templates and includes the queried helper.
+func TestRunScopedOnlyCapture(t *testing.T) {
+	helmPath := localDebugHelm()
+	if helmPath == "" {
+		t.Skip("no debug-enabled helm binary; set HELM_DEBUGGER_HELM to enable")
+	}
+	if _, err := exec.LookPath("dlv"); err != nil {
+		t.Skip("dlv not found in PATH")
+	}
+
+	cfg := &settings.Settings{
+		ChartName:         "test",
+		CompiledHelmPath:  helmPath,
+		WorkingDir:        repoRoot(),
+		CommandArgs:       []string{"--show-only", "templates/deployment.yaml"},
+		HelpersQueryFiles: []string{"test.serviceAccountName"},
+	}
+	if !cfg.ScopedOnly() {
+		t.Fatal("expected a helper-only query to allow scoped-only capture")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	result, err := Run(ctx, cfg, io.Discard)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(result.Flows) == 0 {
+		t.Fatal("scoped-only capture produced no flows")
+	}
+
+	// The rendered template anchors the flow, and the queried helper appears in
+	// it with its source line resolved.
+	anchored, helper := false, false
+	for _, flow := range result.Flows {
+		if flow.Template != nil && flow.Template.FileName == "test/templates/deployment.yaml" {
+			anchored = true
+		}
+		for _, h := range flow.Helpers {
+			if h.FunctionName == "test.serviceAccountName" && h.LineContent != "" {
+				helper = true
+			}
+		}
+	}
+	if !anchored {
+		t.Fatal("no flow was anchored to the rendered deployment template")
+	}
+	if !helper {
+		t.Fatal("the queried helper was not captured with its source line")
+	}
+}
+
 func TestRunResolvesValues(t *testing.T) {
 	helmPath := localDebugHelm()
 	if helmPath == "" {

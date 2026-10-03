@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -105,6 +106,43 @@ func (s *Settings) ScopedTemplateNames() []string {
 	names = append(names, s.HelpersQueryFiles...)
 	names = append(names, s.TemplateQueryFiles...)
 	return names
+}
+
+// ScopedOnly reports whether the query can be served entirely by the scoped
+// Execute breakpoint, so the per-node walk breakpoint can be dropped.
+//
+// The walk breakpoint is the only source of two things: rendered write buffers
+// and value reads on lines whose source is not known until the run executes.
+// A query needs neither when it names helpers/templates and does not ask for a
+// rendered substring or a values option. Exact file:line rendered selectors are
+// fine: the scoped frame reports the same source locations.
+func (s *Settings) ScopedOnly() bool {
+	if s == nil {
+		return false
+	}
+	if len(s.ScopedTemplateNames()) == 0 {
+		return false
+	}
+	if len(s.ValuesQuery) > 0 {
+		return false
+	}
+	for _, sel := range s.RenderedQueryFiles {
+		if !IsFileLine(sel) {
+			return false
+		}
+	}
+	return true
+}
+
+// IsFileLine reports whether selector is a "file:line" reference, for example
+// "mychart/templates/deployment.yaml:42".
+func IsFileLine(selector string) bool {
+	parts := strings.Split(selector, ":")
+	if len(parts) != 2 || parts[0] == "" {
+		return false
+	}
+	_, err := strconv.Atoi(parts[1])
+	return err == nil
 }
 
 // EffectiveWorkingDir returns the directory chart paths are resolved from.

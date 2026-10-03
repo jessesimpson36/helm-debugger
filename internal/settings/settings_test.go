@@ -54,6 +54,50 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestScopedOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *Settings
+		want bool
+	}{
+		{"helper only", &Settings{HelpersQueryFiles: []string{"a.fullname"}}, true},
+		{"template only", &Settings{TemplateQueryFiles: []string{"t/deployment.yaml:3"}}, true},
+		{"helper and exact rendered", &Settings{
+			HelpersQueryFiles:  []string{"a.fullname"},
+			RenderedQueryFiles: []string{"t/deployment.yaml:3"},
+		}, true},
+		{"values needs walk", &Settings{
+			HelpersQueryFiles: []string{"a.fullname"},
+			ValuesQuery:       []string{"image.tag"},
+		}, false},
+		{"rendered substring needs walk", &Settings{
+			HelpersQueryFiles:  []string{"a.fullname"},
+			RenderedQueryFiles: []string{"username: \"\""},
+		}, false},
+		{"values only", &Settings{ValuesQuery: []string{"image.tag"}}, false},
+		{"nothing", &Settings{}, false},
+		{"nil", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cfg.ScopedOnly(); got != tt.want {
+				t.Fatalf("ScopedOnly() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsFileLine(t *testing.T) {
+	if !IsFileLine("t/deployment.yaml:42") {
+		t.Fatal("expected a file:line selector to match")
+	}
+	for _, sel := range []string{"", "deployment.yaml", "deployment.yaml:", "a:b"} {
+		if IsFileLine(sel) {
+			t.Fatalf("IsFileLine(%q) = true, want false", sel)
+		}
+	}
+}
+
 func TestScopedTemplateNames(t *testing.T) {
 	cfg := &Settings{
 		HelpersQueryFiles:  []string{"a.fullname"},

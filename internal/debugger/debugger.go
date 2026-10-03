@@ -17,6 +17,7 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
+	"github.com/jessesimpson36/helm-debugger/internal/prepass"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
 )
 
@@ -65,26 +66,7 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 		}
 	}()
 
-	frames := []*delegate.DelegateFrame{
-		breakpoints.GetLineStartFrame(lines),
-		breakpoints.GetRenderedManifestFrame(lines),
-	}
-	for _, f := range frames {
-		f.ChartPath = cfg.ChartDirectory()
-	}
-
-	// When the caller names helpers/templates, capture those invocations from a
-	// conditional breakpoint on (*Template).Execute. Delve evaluates the
-	// condition in-process, so only matching invocations stop and reach the
-	// client. This is additive: the walk breakpoint still provides the top-level
-	// template anchor and rendered output, so flows stay complete. Measured stop
-	// counts show the potential: on a large chart the walk breakpoint stops
-	// 16298 times, all-execute 1629, and a single-name condition 49.
-	if cond := breakpoints.TemplateExecuteCond(cfg.ScopedTemplateNames()); cond != "" {
-		scoped := breakpoints.GetTemplateExecuteFrame(lines, cond)
-		scoped.ChartPath = cfg.ChartDirectory()
-		frames = append(frames, scoped)
-	}
+	frames := planFrames(ctx, cfg, lines, log)
 
 	if err := session.Configure(frames); err != nil {
 		return nil, err
@@ -172,6 +154,50 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 		LineNumbers: lines,
 		Warnings:    collectSourceWarnings(events),
 	}, nil
+}
+
+// planFrames builds the breakpoint frames for a run. It returns the walk and
+// rendered-manifest frames by default, adding a conditional Execute breakpoint
+// when the caller named helpers/templates. For a helper-only/template-only query
+// it scopes the Execute breakpoint to the chart's rendered templates plus the
+// queried names and omits the per-node walk breakpoint, which is where the
+// speedup comes from.
+func planFrames(ctx context.Context, cfg *settings.Settings, lines breakpoints.LineNumbers, log io.Writer) []*delegate.DelegateFrame {
+	walk := breakpoints.GetLineStartFrame(lines)
+	rendered := breakpoints.GetRenderedManifestFrame(lines)
+	for _, f := range []*delegate.DelegateFrame{walk, rendered} {
+		f.ChartPath = cfg.ChartDirectory()
+	}
+
+	scopedNames := cfg.ScopedTemplateNames()
+	cond := breakpoints.TemplateExecuteCond(scopedNames)
+	if cond == "" {
+		return []*delegate.DelegateFrame{walk, rendered}
+	}
+
+	scopedFrame := func(names []string) *delegate.DelegateFrame {
+		f := breakpoints.GetTemplateExecuteFrame(lines, breakpoints.TemplateExecuteCond(names))
+		f.ChartPath = cfg.ChartDirectory()
+		return f
+	}
+
+	if !cfg.ScopedOnly() {
+		// A values query or rendered substring still needs the walk breakpoint.
+		return []*delegate.DelegateFrame{walk, rendered, scopedFrame(scopedNames)}
+	}
+
+	renderedNames, prepassErr := prepass.RenderedTemplates(ctx, cfg)
+	if prepassErr != nil {
+		if log != nil {
+			fmt.Fprintf(log, "warning: pre-pass failed, using per-node capture: %v\n", prepassErr)
+		}
+		return []*delegate.DelegateFrame{walk, rendered, scopedFrame(scopedNames)}
+	}
+	names := append(append([]string(nil), renderedNames...), scopedNames...)
+	// The scoped breakpoint reports both the rendered templates (flow anchors)
+	// and the queried names, so neither the walk breakpoint nor the
+	// rendered-manifest snapshot is needed.
+	return []*delegate.DelegateFrame{scopedFrame(names)}
 }
 
 // breakpointName returns the name of the breakpoint the debugger is stopped at,
