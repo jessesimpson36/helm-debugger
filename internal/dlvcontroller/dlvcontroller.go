@@ -135,12 +135,18 @@ func choosePort(requested int) (int, error) {
 	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
-// Configure installs all breakpoints for the supplied frames on the session.
+// Configure installs all breakpoints for the supplied frames on the session. It
+// records the ID Delve assigns onto each api.Breakpoint so callers can amend or
+// toggle the breakpoint later.
 func (s *Session) Configure(frames []*delegate.DelegateFrame) error {
 	for _, f := range frames {
 		for _, bp := range f.Breakpoints {
-			if _, err := s.Client.CreateBreakpoint(bp); err != nil {
+			created, err := s.Client.CreateBreakpoint(bp)
+			if err != nil {
 				return fmt.Errorf("failed to create breakpoint %s (%s:%d): %w", bp.Name, bp.File, bp.Line, err)
+			}
+			if created != nil {
+				bp.ID = created.ID
 			}
 		}
 	}

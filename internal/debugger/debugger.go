@@ -17,6 +17,7 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
+	"github.com/jessesimpson36/helm-debugger/internal/includegraph"
 	"github.com/jessesimpson36/helm-debugger/internal/prepass"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
 )
@@ -66,10 +67,24 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 		}
 	}()
 
-	frames := planFrames(ctx, cfg, lines, log)
+	runPlan := planFrames(ctx, cfg, lines, log)
 
-	if err := session.Configure(frames); err != nil {
+	if err := session.Configure(runPlan.frames); err != nil {
 		return nil, err
+	}
+
+	// Gate the per-node walk breakpoint to the queried helpers' subtree. It
+	// starts disabled and is toggled at runtime, so nodes outside the subtree do
+	// not stop the debugger.
+	var gate *walkGate
+	if len(runPlan.walkNames) > 0 {
+		gate = newWalkGate(session.Client, runPlan.walkBP, runPlan.walkNames)
+		if err := gate.Begin(); err != nil {
+			if log != nil {
+				fmt.Fprintf(log, "warning: walk gating disabled: %v\n", err)
+			}
+			gate = nil
+		}
 	}
 
 	// Value resolution on this branch captures the value at the point the
@@ -127,10 +142,21 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 			continue
 		}
 
-		currentFrame := frameForBreakpoint(frames, state)
+		currentFrame := frameForBreakpoint(runPlan.frames, state)
 		if currentFrame == nil {
 			state = <-session.Client.Continue()
 			continue
+		}
+
+		// A relevant template/helper is starting; enable the walk breakpoint so
+		// its nodes are captured. The walk breakpoint cannot enable itself: when
+		// it is disabled there are no walk stops, so the Execute trigger is the
+		// only place the gate can turn it on.
+		if gate != nil && breakpointName(state) == "templateexecute" {
+			gate.OnEnter(session.Client)
+		}
+		if gate != nil && breakpointName(state) == "linestart" {
+			gate.AtWalk()
 		}
 
 		respVars, gatherErr := currentFrame.Gather(session.Client)
@@ -156,48 +182,83 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 	}, nil
 }
 
-// planFrames builds the breakpoint frames for a run. It returns the walk and
-// rendered-manifest frames by default, adding a conditional Execute breakpoint
-// when the caller named helpers/templates. For a helper-only/template-only query
-// it scopes the Execute breakpoint to the chart's rendered templates plus the
-// queried names and omits the per-node walk breakpoint, which is where the
-// speedup comes from.
-func planFrames(ctx context.Context, cfg *settings.Settings, lines breakpoints.LineNumbers, log io.Writer) []*delegate.DelegateFrame {
+// plan is the breakpoint configuration for a run.
+type plan struct {
+	frames []*delegate.DelegateFrame
+	// walkBP is the per-node walk breakpoint, when installed. The gate toggles
+	// it at runtime.
+	walkBP *api.Breakpoint
+	// walkNames is the set of template names whose subtree should be walked. It
+	// is empty when the walk breakpoint should stay unconditionally enabled.
+	walkNames []string
+}
+
+// planFrames builds the breakpoint frames for a run. It always includes the walk
+// and rendered-manifest frames. When the caller names helpers/templates it adds
+// a conditional Execute breakpoint and returns the include-graph closure of the
+// named helpers, so the caller can gate the walk breakpoint to just that
+// subtree: full per-line detail where it matters, invocation-only elsewhere.
+func planFrames(ctx context.Context, cfg *settings.Settings, lines breakpoints.LineNumbers, log io.Writer) plan {
 	walk := breakpoints.GetLineStartFrame(lines)
 	rendered := breakpoints.GetRenderedManifestFrame(lines)
 	for _, f := range []*delegate.DelegateFrame{walk, rendered} {
 		f.ChartPath = cfg.ChartDirectory()
 	}
+	base := plan{frames: []*delegate.DelegateFrame{walk, rendered}, walkBP: walk.Breakpoints[0]}
 
 	scopedNames := cfg.ScopedTemplateNames()
-	cond := breakpoints.TemplateExecuteCond(scopedNames)
-	if cond == "" {
-		return []*delegate.DelegateFrame{walk, rendered}
+	if len(scopedNames) == 0 {
+		return base
 	}
 
-	scopedFrame := func(names []string) *delegate.DelegateFrame {
-		f := breakpoints.GetTemplateExecuteFrame(lines, breakpoints.TemplateExecuteCond(names))
-		f.ChartPath = cfg.ChartDirectory()
-		return f
-	}
-
-	if !cfg.ScopedOnly() {
-		// A values query or rendered substring still needs the walk breakpoint.
-		return []*delegate.DelegateFrame{walk, rendered, scopedFrame(scopedNames)}
-	}
-
+	// Anchors: the chart's rendered templates, discovered by a cheap pre-pass.
+	// They are needed so flows are tied to what actually rendered.
 	renderedNames, prepassErr := prepass.RenderedTemplates(ctx, cfg)
 	if prepassErr != nil {
 		if log != nil {
 			fmt.Fprintf(log, "warning: pre-pass failed, using per-node capture: %v\n", prepassErr)
 		}
-		return []*delegate.DelegateFrame{walk, rendered, scopedFrame(scopedNames)}
+		return base
 	}
-	names := append(append([]string(nil), renderedNames...), scopedNames...)
-	// The scoped breakpoint reports both the rendered templates (flow anchors)
-	// and the queried names, so neither the walk breakpoint nor the
-	// rendered-manifest snapshot is needed.
-	return []*delegate.DelegateFrame{scopedFrame(names)}
+
+	// The subtree to walk: the queried names plus everything they call. When a
+	// queried helper reaches a dynamic include the closure is unbounded, so the
+	// gate falls back to walking unconditionally rather than dropping lines.
+	walkNames, unbounded := includegraph.Names(cfg.ChartDirectory(), scopedNames)
+	if unbounded {
+		if log != nil {
+			fmt.Fprintf(log, "warning: a queried helper has an unresolved include; walking all nodes\n")
+		}
+		walkNames = nil
+	}
+
+	triggerNames := append(append([]string(nil), renderedNames...), walkNames...)
+	triggerNames = append(triggerNames, scopedNames...)
+	scoped := breakpoints.GetTemplateExecuteFrame(lines, breakpoints.TemplateExecuteCond(dedupe(triggerNames)))
+	scoped.ChartPath = cfg.ChartDirectory()
+
+	return plan{
+		frames:    []*delegate.DelegateFrame{walk, rendered, scoped},
+		walkBP:    walk.Breakpoints[0],
+		walkNames: walkNames,
+	}
+}
+
+// dedupe removes empty and repeated names while preserving order.
+func dedupe(names []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
 }
 
 // breakpointName returns the name of the breakpoint the debugger is stopped at,
