@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
+	"github.com/jessesimpson36/helm-debugger/internal/templatevalues"
 )
 
 // A frame represents a breakpoint and a set of variables you want displayed at that frame
@@ -17,6 +18,12 @@ type Frame struct {
 	// used to resolve runtime template names (which helm prefixes with the
 	// Chart.yaml name) back to files on disk.
 	ChartPath string
+	// ResolveValues enables resolving the .Values.* references on each captured
+	// line to the values Helm actually rendered with.
+	ResolveValues bool
+	// ValueResolver performs that resolution against the stopped debuggee. It is
+	// shared across the run so it can be reused for every breakpoint.
+	ValueResolver *templatevalues.Resolver
 }
 
 type RenderedLine struct {
@@ -33,6 +40,10 @@ type ExecutionUnit struct {
 	// SourceError is set when the source line could not be read from disk. The
 	// execution unit is still reported; only LineContent is missing.
 	SourceError string
+	// ResolvedValues maps a .Values path (without the leading ".Values.", for
+	// example "serviceAccount.name") to the value Helm saw at render time. It is
+	// nil unless value resolution was enabled for the run.
+	ResolvedValues map[string]string
 }
 
 // A mapper is helps bind a variable name to a common type

@@ -106,7 +106,14 @@ func writeFlow(w io.Writer, flow *executionflow.ExecutionFlow) {
 	}
 	fmt.Fprintln(w, "Relevant Values")
 	for _, valRef := range flow.ValuesReference {
-		fmt.Fprintf(w, "- %s\n", valRef.ValuesName)
+		switch {
+		case valRef.Resolved && valRef.Found:
+			fmt.Fprintf(w, "- %s = %s\n", valRef.ValuesName, valRef.Values)
+		case valRef.Resolved:
+			fmt.Fprintf(w, "- %s = <unset>\n", valRef.ValuesName)
+		default:
+			fmt.Fprintf(w, "- %s\n", valRef.ValuesName)
+		}
 	}
 	fmt.Fprintln(w, "WriteBuffer")
 	var prevBuffer *frame.RenderedLine

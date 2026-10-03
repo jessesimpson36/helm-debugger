@@ -79,6 +79,54 @@ func TestRunAgainstLocalHelm(t *testing.T) {
 	}
 }
 
+func TestRunResolvesValues(t *testing.T) {
+	helmPath := localDebugHelm()
+	if helmPath == "" {
+		t.Skip("no debug-enabled helm binary; set HELM_DEBUGGER_HELM to enable")
+	}
+	if _, err := exec.LookPath("dlv"); err != nil {
+		t.Skip("dlv not found in PATH")
+	}
+
+	cfg := &settings.Settings{
+		ChartName:        "test",
+		CompiledHelmPath: helmPath,
+		WorkingDir:       repoRoot(),
+		CommandArgs:      []string{"--show-only", "templates/deployment.yaml"},
+		ResolveValues:    true,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	result, err := Run(ctx, cfg, io.Discard)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// The chart's serviceAccount.name defaults to "" in values.yaml; the helper
+	// line reads it, so it must resolve to the empty string rather than being
+	// reported as unresolved.
+	found := false
+	for _, flow := range result.Flows {
+		for _, ref := range flow.ValuesReference {
+			if ref.ValuesName != "serviceAccount.name" {
+				continue
+			}
+			found = true
+			if !ref.Resolved || !ref.Found {
+				t.Fatalf("serviceAccount.name was not resolved: %+v", ref)
+			}
+			if ref.Values != `""` {
+				t.Fatalf("serviceAccount.name = %q, want %q", ref.Values, `""`)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected a flow to reference serviceAccount.name")
+	}
+}
+
 func TestRunRequiresChart(t *testing.T) {
 	_, err := Run(context.Background(), &settings.Settings{CompiledHelmPath: "helm"}, io.Discard)
 	if err == nil {

@@ -78,6 +78,70 @@ func TestWriteRendersDiff(t *testing.T) {
 	}
 }
 
+// resolvedFlow is sampleFlow plus a helper line whose .Values references were
+// resolved at render time.
+func resolvedFlow() *executionflow.ExecutionFlow {
+	flow := sampleFlow()
+	helper := &frame.ExecutionUnit{
+		FunctionName: "chart.serviceAccountName",
+		FileName:     "chart/templates/_helpers.tpl",
+		LineNumber:   58,
+		LineContent:  `{{- default (include "chart.fullname" .) .Values.serviceAccount.name }}`,
+		ResolvedValues: map[string]string{
+			"serviceAccount.name": `""`,
+		},
+	}
+	flow.Helpers = []*frame.ExecutionUnit{helper}
+	flow.ValuesReference = []*executionflow.ValuesReference{
+		{ExecutionUnit: helper, ValuesName: "serviceAccount.name", Values: `""`, Resolved: true, Found: true},
+	}
+	return flow
+}
+
+func TestWriteRendersResolvedValues(t *testing.T) {
+	text := Text([]Section{{Name: "EXECUTION FLOWS", Flows: []*executionflow.ExecutionFlow{resolvedFlow()}}})
+	for _, want := range []string{
+		"Relevant Values",
+		`- serviceAccount.name = ""`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("report missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestWriteMarksUnresolvedWhenResolutionRan(t *testing.T) {
+	flow := sampleFlow()
+	flow.ValuesReference = []*executionflow.ValuesReference{
+		{ValuesName: "image.tag", Resolved: true, Found: false},
+	}
+	text := Text([]Section{{Name: "EXECUTION FLOWS", Flows: []*executionflow.ExecutionFlow{flow}}})
+	if !strings.Contains(text, "- image.tag = <unset>") {
+		t.Fatalf("expected an <unset> marker:\n%s", text)
+	}
+}
+
+func TestLocateIncludesResolvedValues(t *testing.T) {
+	located := Locate([]*executionflow.ExecutionFlow{resolvedFlow()}, &settings.Settings{})
+	var helperSite *Site
+	for i := range located.Sites {
+		if located.Sites[i].Helper == "chart.serviceAccountName" {
+			helperSite = &located.Sites[i]
+		}
+	}
+	if helperSite == nil {
+		t.Fatalf("expected the helper site, got %+v", located.Sites)
+	}
+	if got := helperSite.Values["serviceAccount.name"]; got != `""` {
+		t.Fatalf("site values = %#v, want serviceAccount.name=%q", helperSite.Values, `""`)
+	}
+
+	text := LocateText(located, nil)
+	if !strings.Contains(text, `.Values.serviceAccount.name = ""`) {
+		t.Fatalf("locate text missing the resolved value:\n%s", text)
+	}
+}
+
 func TestWarningsText(t *testing.T) {
 	if got := WarningsText(nil); got != "" {
 		t.Fatalf("WarningsText(nil) = %q, want empty", got)

@@ -298,21 +298,10 @@ func decodeDebugOutput(t *testing.T, res *mcp.CallToolResult) debugHelmOutput {
 	return out
 }
 
-// TestDebugHelmToolVersionedChart is an end-to-end test of the MCP tool against
-// a chart whose directory name differs from its Chart.yaml name. It only runs
-// when a debug-enabled helm binary and dlv are available.
-func TestDebugHelmToolVersionedChart(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
-	helmPath := debugHelmBinary()
-	if helmPath == "" {
-		t.Skip("no debug-enabled helm binary; set HELM_DEBUGGER_HELM to enable")
-	}
-	if _, err := exec.LookPath("dlv"); err != nil {
-		t.Skip("dlv not found in PATH")
-	}
-
+// writeVersionedChart writes a chart whose directory name (mychart-1.2.3)
+// differs from its Chart.yaml name (mychart) and returns the working directory.
+func writeVersionedChart(t *testing.T) string {
+	t.Helper()
 	root := t.TempDir()
 	chartDir := filepath.Join(root, "charts", "mychart-1.2.3")
 	files := map[string]string{
@@ -338,6 +327,25 @@ data:
 			t.Fatal(err)
 		}
 	}
+	return root
+}
+
+// TestDebugHelmToolVersionedChart is an end-to-end test of the MCP tool against
+// a chart whose directory name differs from its Chart.yaml name. It only runs
+// when a debug-enabled helm binary and dlv are available.
+func TestDebugHelmToolVersionedChart(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	helmPath := debugHelmBinary()
+	if helmPath == "" {
+		t.Skip("no debug-enabled helm binary; set HELM_DEBUGGER_HELM to enable")
+	}
+	if _, err := exec.LookPath("dlv"); err != nil {
+		t.Skip("dlv not found in PATH")
+	}
+
+	root := writeVersionedChart(t)
 
 	session := connectTestClient(t)
 	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -402,5 +410,58 @@ data:
 	}
 	if !strings.Contains(needleOut.Report, "mychart/templates/deployment.yaml") {
 		t.Fatalf("rendered needle did not locate the deployment template:\n%s", needleOut.Report)
+	}
+}
+
+// TestDebugHelmToolResolvesValues is an end-to-end test of resolve_values: the
+// tool must report the value Helm rendered with, not just the option name.
+func TestDebugHelmToolResolvesValues(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	helmPath := debugHelmBinary()
+	if helmPath == "" {
+		t.Skip("no debug-enabled helm binary; set HELM_DEBUGGER_HELM to enable")
+	}
+	if _, err := exec.LookPath("dlv"); err != nil {
+		t.Skip("dlv not found in PATH")
+	}
+
+	root := writeVersionedChart(t)
+	session := connectTestClient(t)
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "debug_helm",
+		Arguments: map[string]any{
+			"chart_path":     "charts/mychart-1.2.3",
+			"working_dir":    root,
+			"helm_path":      helmPath,
+			"values":         []any{"image.tag"},
+			"resolve_values": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool returned protocol error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected tool error: %s", resultText(t, res))
+	}
+
+	out := decodeDebugOutput(t, res)
+	found := false
+	for _, site := range out.Sites {
+		value, ok := site.Values["image.tag"]
+		if !ok {
+			continue
+		}
+		found = true
+		if value != `"v1"` {
+			t.Fatalf("image.tag resolved to %q, want %q", value, `"v1"`)
+		}
+	}
+	if !found {
+		t.Fatalf("no site reported a resolved image.tag (report:\n%s)", out.Report)
+	}
+	if !strings.Contains(out.Report, `.Values.image.tag = "v1"`) {
+		t.Fatalf("report does not show the resolved value:\n%s", out.Report)
 	}
 }
