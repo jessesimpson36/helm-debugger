@@ -26,8 +26,9 @@ repository:
 make docker-build
 ```
 
-Then reconnect the MCP server in OpenCode (`/mcps` → helm-debugger, or
-`opencode service restart`).
+Then reconnect the MCP server in your AI tool: OpenCode (`/mcps` →
+helm-debugger, or `opencode service restart`), Claude Code (`/mcp`), Cursor
+(Settings → MCP), or VS Code (reload the window).
 
 ## 1. Render first
 

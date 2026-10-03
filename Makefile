@@ -154,7 +154,8 @@ docker-run: docker-build
 		--mode model --helm-path helm --chart test \
 		--extra-command-args '--show-only templates/deployment.yaml'
 
-# Start the MCP server over stdio (used by opencode via .opencode/opencode.json).
+# Start the MCP server over stdio (used by the project-local MCP configs under
+# .opencode/, .mcp.json, .cursor/mcp.json and .vscode/mcp.json).
 docker-mcp: docker-build
 	docker run $(DOCKER_RUN_FLAGS) -i -v "$(CURDIR):/workspace" -w /workspace $(IMAGE) --mode mcp
 

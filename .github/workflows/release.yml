@@ -353,6 +353,12 @@ jobs:
             ./scripts/release-metadata.sh > release/metadata.json
 
           sed "s|__IMAGE__|${IMAGE_GHCR}:${VERSION}|" packaging/opencode.mcp.json > release/opencode-ghcr.json
+          for h in claude cursor vscode; do
+            sed "s|__IMAGE__|${IMAGE_GHCR}:${VERSION}|" "packaging/$h.mcp.json" > "release/${h}-ghcr.json"
+            if [ "$DOCKERHUB_ENABLED" = "true" ]; then
+              sed "s|__IMAGE__|${IMAGE_DOCKERHUB}:${VERSION}|" "packaging/$h.mcp.json" > "release/${h}-dockerhub.json"
+            fi
+          done
           if [ "$DOCKERHUB_ENABLED" = "true" ]; then
             sed "s|__IMAGE__|${IMAGE_DOCKERHUB}:${VERSION}|" packaging/opencode.mcp.json > release/opencode-dockerhub.json
           fi

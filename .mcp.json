@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "helm-debugger": {
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "--cap-add=SYS_PTRACE",
+        "--security-opt",
+        "seccomp=unconfined",
+        "-v",
+        ".:/workspace",
+        "-w",
+        "/workspace",
+        "jessesimpson/helm-debugger:latest"
+      ]
+    }
+  }
+}

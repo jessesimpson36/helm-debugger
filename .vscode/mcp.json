@@ -1,0 +1,21 @@
+{
+  "servers": {
+    "helm-debugger": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "--cap-add=SYS_PTRACE",
+        "--security-opt",
+        "seccomp=unconfined",
+        "-v",
+        "${workspaceFolder}:/workspace",
+        "-w",
+        "/workspace",
+        "jessesimpson/helm-debugger:latest"
+      ]
+    }
+  }
+}

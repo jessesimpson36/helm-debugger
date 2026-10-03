@@ -14,7 +14,8 @@ as a GitHub release. Tagging is the normal way to cut one.
 | `helm-debugger-vX.Y.Z-image-amd64.spdx.json` / `.cdx.json`, `…-image-arm64.…` | Per-platform SBOM of the container image (SPDX and CycloneDX). |
 | `metadata.json` | How the release was built: version, commit, build date, Go/Helm/Delve versions, image digest and platforms, SBOM filenames. |
 | `opencode-ghcr.json`, `opencode-dockerhub.json` | Canonical OpenCode MCP config pinned to this version (Docker Hub variant only when Docker Hub is configured). |
-| `install-mcp.sh` | Adds/updates the server in an OpenCode config; the upgrade helper. |
+| `claude-ghcr.json` / `-dockerhub.json`, `cursor-ghcr.json` / `-dockerhub.json`, `vscode-ghcr.json` / `-dockerhub.json` | The same pinned config for Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`), and VS Code (`.vscode/mcp.json`). Generated from `packaging/<tool>.mcp.json`. |
+| `install-mcp.sh` | Adds/updates the server in any supported tool's config (`--harness opencode\|claude\|cursor\|vscode`); the upgrade helper. |
 | `SHA256SUMS` | Checksums for every asset above. |
 
 In addition, a GitHub **provenance** attestation is generated for the

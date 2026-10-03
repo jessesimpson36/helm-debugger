@@ -196,7 +196,8 @@ documented in [`docs/RELEASING.md`](docs/RELEASING.md). A release contains:
   CycloneDX;
 - **build metadata** (`metadata.json`) recording the source commit, build date,
   and the pinned Go, Helm, and Delve versions, plus the image digest;
-- a version-pinned **OpenCode MCP config** and the `install-mcp.sh` helper.
+- a version-pinned **MCP config for each supported AI tool** (OpenCode, Claude
+  Code, Cursor, VS Code) and the `install-mcp.sh` helper.
 
 The image also carries the same information as OCI labels and as
 `/usr/local/share/helm-debugger/version.txt`, and a GitHub provenance
@@ -225,19 +226,25 @@ docker pull ghcr.io/jessesimpson36/helm-debugger:v0.2.0
 | `latest` | Moving. Newest non-prerelease. |
 | `goX.Y.Z-helm...-delve...` | Immutable toolchain tag; changes only when the toolchain does. |
 
-OpenCode does not update MCP server configuration on its own, so the config is
-shipped as a release asset. Each release attaches
-`opencode-ghcr.json` / `opencode-dockerhub.json` pinned to that version, plus
-`install-mcp.sh`, which merges only the `helm-debugger` server entry into an
-existing config (leaving other servers and settings alone):
+An AI coding tool does not update MCP server configuration on its own, so the
+config is shipped as a release asset. Each release attaches a version-pinned
+config per supported tool plus `install-mcp.sh`, which merges only the
+`helm-debugger` server entry into an existing config (leaving other servers and
+settings alone):
 
 ```bash
-bash install-mcp.sh v0.2.0              # pin a version, project-local config
-bash install-mcp.sh latest --global     # or track latest globally
+bash install-mcp.sh v0.2.0                          # opencode, project-local
+bash install-mcp.sh latest --global                 # or track latest globally
+bash install-mcp.sh v0.2.0 --harness claude         # Claude Code (.mcp.json)
+bash install-mcp.sh v0.2.0 --harness cursor         # Cursor (.cursor/mcp.json)
+bash install-mcp.sh v0.2.0 --harness vscode         # VS Code (.vscode/mcp.json)
 ```
 
 (The download may not keep the executable bit, hence `bash`.) The script needs
-`jq` and only rewrites the `helm-debugger` entry.
+`jq` and only rewrites the `helm-debugger` entry. Alternatively, copy the pinned
+`opencode-ghcr.json`, `claude-ghcr.json`, `cursor-ghcr.json`, or
+`vscode-ghcr.json` from the release assets (Docker Hub variants are attached
+when Docker Hub publishing is configured).
 
 After changing the config, reconnect the server (`/mcps` → helm-debugger, or
 `opencode service restart`), then confirm the reported version:
@@ -278,7 +285,24 @@ Use `debug_helm` while reproducing a problem and *before* editing a template,
 MCP server advertises the same workflow in its `instructions`, so clients that
 surface server instructions get the guidance without any per-repository config.
 
-### opencode
+### AI coding tools
+
+The server is a standard stdio MCP server, so any MCP client can launch it. The
+repository ships project-local configs for the common ones, all pointing at the
+published Docker image (`jessesimpson/helm-debugger:latest`):
+
+| Tool | Project config | Shape |
+| --- | --- | --- |
+| [OpenCode](#opencode) | `opencode.json` | `mcp.servers`, array command + `cwd` |
+| [Claude Code](#claude-code) | `.mcp.json` | `mcpServers`, string command + args |
+| [Cursor](#cursor) | `.cursor/mcp.json` | `mcpServers`, string command + args |
+| [VS Code](#vs-code) | `.vscode/mcp.json` | `servers`, `type: stdio` |
+
+The `AGENTS.md` file and the server's own `instructions` (advertised in the MCP
+`initialize` response) carry the render → locate → validate workflow for every
+client that reads them.
+
+#### opencode
 
 This repository ships an `opencode.json` that registers the server using the
 Docker image from the Docker Hub mirror (the GHCR image works identically).
@@ -295,6 +319,35 @@ To consume a published version instead of building locally, use the
 `opencode-dockerhub.json` from the release assets. The server config changes
 only when the release changes how the server is invoked; the release assets are
 generated from `packaging/opencode.mcp.json` so that contract is explicit.
+
+#### Claude Code
+
+The repository ships a project-scoped `.mcp.json`. Claude Code prompts for
+approval before using project-scoped servers, so confirm it once:
+
+```bash
+claude mcp list      # should show helm-debugger
+```
+
+To pin a released version, run `install-mcp.sh --harness claude` (see
+[Upgrading](#upgrading)) or copy `claude-ghcr.json` to `.mcp.json`. The release
+assets are generated from `packaging/claude.mcp.json`.
+
+#### Cursor
+
+The repository ships `.cursor/mcp.json`, using `${workspaceFolder}` for the bind
+mount so the chart being debugged is the open project. To pin a released
+version, run `install-mcp.sh --harness cursor` or copy `cursor-ghcr.json` over
+`.cursor/mcp.json`. The release assets are generated from
+`packaging/cursor.mcp.json`.
+
+#### VS Code
+
+The repository ships `.vscode/mcp.json` for GitHub Copilot's agent mode. VS Code
+calls the entry a *server* and requires `"type": "stdio"`. To pin a released
+version, run `install-mcp.sh --harness vscode` or copy `vscode-ghcr.json` over
+`.vscode/mcp.json`. The release assets are generated from
+`packaging/vscode.mcp.json`.
 
 `debug_helm` accepts filters analogous to the CLI flags. `chart` is a name or
 path relative to `working_dir`, or pass `chart_path` to point directly at a
@@ -328,7 +381,9 @@ chart directory:
   values, helpers, and templates instead of returning a silent empty report.
 
 Chart paths are relative to `/workspace` (the mounted repository). If you run
-the server outside Docker, use the local binary instead:
+the server outside Docker, use the local binary instead. The example below is
+OpenCode's shape; the other tools use the same command with their own wrapper
+(`command`/`args` for Claude Code and Cursor, `type: stdio` for VS Code):
 
 ```json
 {

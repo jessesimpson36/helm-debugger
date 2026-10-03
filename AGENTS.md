@@ -40,4 +40,9 @@ Helm/Delve/Go is installed on the host. If a tool reports that the image is
 missing, build and push it from this repository with `make docker-push` (or
 `make docker-build` for a local-only image), then reconnect the server.
 
+Project-local MCP configs are committed for OpenCode (`.opencode/opencode.json`
+via `opencode.json`), Claude Code (`.mcp.json`), Cursor (`.cursor/mcp.json`),
+and VS Code (`.vscode/mcp.json`); `packaging/install-mcp.sh --harness <tool>`
+pins a released version for any of them.
+
 See the `helm-debugging` skill for the full workflow and how to read the output.
