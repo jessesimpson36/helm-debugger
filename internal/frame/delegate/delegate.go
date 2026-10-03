@@ -24,27 +24,33 @@ type DelegateFrame frame.Frame
 
 func (d *DelegateFrame) Gather(client *rpc2.RPCClient) (map[string]string, error) {
 	dFrame := &frame.Frame{
-		Breakpoints: d.Breakpoints,
-		ReqVars:     d.ReqVars,
-		Mapper:      d.Mapper,
-		ChartPath:   d.ChartPath,
+		Breakpoints:   d.Breakpoints,
+		ReqVars:       d.ReqVars,
+		Mapper:        d.Mapper,
+		ChartPath:     d.ChartPath,
+		ResolveValues: d.ResolveValues,
+		ValueResolver: d.ValueResolver,
 	}
 	frameType := GetFrameType(dFrame)
 	switch frameType {
 	case "line":
 		tFrame := templateframe.TemplateFrame{
-			Breakpoints: d.Breakpoints,
-			ReqVars:     d.ReqVars,
-			Mapper:      d.Mapper,
-			ChartPath:   d.ChartPath,
+			Breakpoints:   d.Breakpoints,
+			ReqVars:       d.ReqVars,
+			Mapper:        d.Mapper,
+			ChartPath:     d.ChartPath,
+			ResolveValues: d.ResolveValues,
+			ValueResolver: d.ValueResolver,
 		}
 		return tFrame.Gather(client)
 	case "rendered":
 		rmFrame := renderedmanifest.RenderedManifestFrame{
-			Breakpoints: d.Breakpoints,
-			ReqVars:     d.ReqVars,
-			Mapper:      d.Mapper,
-			ChartPath:   d.ChartPath,
+			Breakpoints:   d.Breakpoints,
+			ReqVars:       d.ReqVars,
+			Mapper:        d.Mapper,
+			ChartPath:     d.ChartPath,
+			ResolveValues: d.ResolveValues,
+			ValueResolver: d.ValueResolver,
 		}
 		return rmFrame.Gather(client)
 	default:
@@ -54,27 +60,33 @@ func (d *DelegateFrame) Gather(client *rpc2.RPCClient) (map[string]string, error
 
 func (d *DelegateFrame) Bind(respVars map[string]string) (*frame.BindResult, error) {
 	dFrame := &frame.Frame{
-		Breakpoints: d.Breakpoints,
-		ReqVars:     d.ReqVars,
-		Mapper:      d.Mapper,
-		ChartPath:   d.ChartPath,
+		Breakpoints:   d.Breakpoints,
+		ReqVars:       d.ReqVars,
+		Mapper:        d.Mapper,
+		ChartPath:     d.ChartPath,
+		ResolveValues: d.ResolveValues,
+		ValueResolver: d.ValueResolver,
 	}
 	frameType := GetFrameType(dFrame)
 	switch frameType {
 	case "line":
 		tFrame := templateframe.TemplateFrame{
-			Breakpoints: d.Breakpoints,
-			ReqVars:     d.ReqVars,
-			Mapper:      d.Mapper,
-			ChartPath:   d.ChartPath,
+			Breakpoints:   d.Breakpoints,
+			ReqVars:       d.ReqVars,
+			Mapper:        d.Mapper,
+			ChartPath:     d.ChartPath,
+			ResolveValues: d.ResolveValues,
+			ValueResolver: d.ValueResolver,
 		}
 		return tFrame.Bind(respVars)
 	case "rendered":
 		rmFrame := renderedmanifest.RenderedManifestFrame{
-			Breakpoints: d.Breakpoints,
-			ReqVars:     d.ReqVars,
-			Mapper:      d.Mapper,
-			ChartPath:   d.ChartPath,
+			Breakpoints:   d.Breakpoints,
+			ReqVars:       d.ReqVars,
+			Mapper:        d.Mapper,
+			ChartPath:     d.ChartPath,
+			ResolveValues: d.ResolveValues,
+			ValueResolver: d.ValueResolver,
 		}
 		return rmFrame.Bind(respVars)
 	default:

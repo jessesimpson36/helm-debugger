@@ -2,7 +2,7 @@ package executionflow
 
 import (
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
-	"strings"
+	"github.com/jessesimpson36/helm-debugger/internal/templatevalues"
 )
 
 type ExecutionFlow struct {
@@ -16,35 +16,41 @@ type ValuesReference struct {
 	ExecutionUnit *frame.ExecutionUnit
 	ValuesName    string
 	Values        string
+	// Root is true when the line reads "$.Values.<name>" (the root data) rather
+	// than ".Values.<name>" (the current dot).
+	Root bool
+	// Resolved is true when value resolution ran for this line, so Values (even
+	// when empty) is meaningful.
+	Resolved bool
+	// Found is true when the option was present in the rendered values.
+	Found bool
 }
 
 func ContainsValuesReference(execUnit *frame.ExecutionUnit) bool {
-	if strings.Contains(execUnit.LineContent, "Values.") {
-		return true
+	if execUnit == nil {
+		return false
 	}
-	return false
+	return templatevalues.Contains(execUnit.LineContent)
 }
 
 func GetValuesReferences(execUnit *frame.ExecutionUnit) []string {
-	valuesRefs := []string{}
-	words := strings.Fields(execUnit.LineContent)
-	for _, word := range words {
-		if strings.HasPrefix(word, ".Values.") {
-			cleaned := strings.TrimSuffix(strings.TrimPrefix(word, ".Values."), ",")
-			valuesRefs = append(valuesRefs, cleaned)
-		}
+	if execUnit == nil {
+		return nil
 	}
-	return valuesRefs
+	return templatevalues.References(execUnit.LineContent)
 }
 
 func FillValuesReferences(flow *ExecutionFlow, execUnit *frame.ExecutionUnit) {
 	if ContainsValuesReference(execUnit) {
-		valuesNames := GetValuesReferences(execUnit)
-		for _, valName := range valuesNames {
+		for _, ref := range templatevalues.ParseReferences(execUnit.LineContent) {
 			valRef := &ValuesReference{
 				ExecutionUnit: execUnit,
-				ValuesName:    valName,
-				Values:        "", // Placeholder, actual value retrieval logic needed
+				ValuesName:    ref.Path,
+				Root:          ref.Root,
+			}
+			if execUnit.ResolvedValues != nil {
+				valRef.Resolved = true
+				valRef.Values, valRef.Found = execUnit.ResolvedValues[ref.Expr()]
 			}
 			flow.ValuesReference = append(flow.ValuesReference, valRef)
 		}

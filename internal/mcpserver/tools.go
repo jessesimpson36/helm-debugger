@@ -43,6 +43,8 @@ func registerTools(server *mcp.Server, logger *log.Logger) {
 			"render problem and BEFORE editing templates, _helpers.tpl, or values.yaml: pass `values` for " +
 			"an option that is not taking effect to get the exact template/helper file:line that reads it, " +
 			"or pass `rendered` with a snippet of the wrong output to find the template that wrote it. " +
+			"Pass `resolve_values` to also report what each .Values.* option on a matched line evaluated to " +
+			"at render time (for example `serviceAccount.name = \"\"`). " +
 			"Re-run after editing to confirm the flow changed. Returns compact source sites by default; " +
 			"set mode=\"full\" for complete execution flows and rendered write buffers. Requires a helm " +
 			"binary built with debug symbols (the bundled Docker image provides one).",
@@ -125,6 +127,7 @@ type debugHelmInput struct {
 	Helpers        []string `json:"helpers,omitempty" jsonschema:"helper/template names to filter by, e.g. mychart.fullname"`
 	Templates      []string `json:"templates,omitempty" jsonschema:"template file:line filters, e.g. mychart/templates/deployment.yaml:42"`
 	Rendered       []string `json:"rendered,omitempty" jsonschema:"rendered output selectors: a file:line source selector, or any other string treated as a substring of the rendered output (e.g. a snippet of the wrong output)"`
+	ResolveValues  bool     `json:"resolve_values,omitempty" jsonschema:"also resolve each .Values.* option on matched lines to the value Helm rendered with, e.g. serviceAccount.name = \"\""`
 	HelmPath       string   `json:"helm_path,omitempty" jsonschema:"path to the debug-enabled helm binary"`
 	GoRoot         string   `json:"goroot,omitempty" jsonschema:"GOROOT whose text/template source should be used for breakpoints"`
 	WorkingDir     string   `json:"working_dir,omitempty" jsonschema:"directory chart paths are relative to"`
@@ -164,6 +167,7 @@ func handleDebugHelm(ctx context.Context, input debugHelmInput, logger *log.Logg
 		HelpersQueryFiles:  input.Helpers,
 		TemplateQueryFiles: input.Templates,
 		RenderedQueryFiles: input.Rendered,
+		ResolveValues:      input.ResolveValues,
 	}
 	if cfg.CompiledHelmPath == "" {
 		cfg.CompiledHelmPath = "helm"

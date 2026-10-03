@@ -48,6 +48,31 @@ func TestFillValuesReferences(t *testing.T) {
 	}
 }
 
+func TestFillValuesReferencesRoot(t *testing.T) {
+	flow := &ExecutionFlow{}
+	unit := &frame.ExecutionUnit{
+		LineContent: `{{ range .Values.items }}{{ $.Values.serviceAccount.name }}{{ end }}`,
+		ResolvedValues: map[string]string{
+			".Values.items":                "<[]interface {}>",
+			"$.Values.serviceAccount.name": `""`,
+		},
+	}
+	FillValuesReferences(flow, unit)
+	if len(flow.ValuesReference) != 2 {
+		t.Fatalf("expected 2 values references, got %d: %+v", len(flow.ValuesReference), flow.ValuesReference)
+	}
+	if flow.ValuesReference[0].ValuesName != "items" || flow.ValuesReference[0].Root {
+		t.Fatalf("unexpected first reference: %+v", flow.ValuesReference[0])
+	}
+	root := flow.ValuesReference[1]
+	if root.ValuesName != "serviceAccount.name" || !root.Root {
+		t.Fatalf("unexpected root reference: %+v", root)
+	}
+	if !root.Resolved || !root.Found || root.Values != `""` {
+		t.Fatalf("root reference was not resolved: %+v", root)
+	}
+}
+
 func TestContainsValuesReference(t *testing.T) {
 	if ContainsValuesReference(&frame.ExecutionUnit{LineContent: "no values here"}) {
 		t.Fatal("did not expect a values reference")

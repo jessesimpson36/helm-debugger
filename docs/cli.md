@@ -17,6 +17,8 @@
     	Mode of operation: model, mcp (default "model")
   -rendered-file string
     	Comma-delimited list of query files for rendered manifest.
+  -resolve-values
+    	Resolve .Values.* references on each captured line to the value Helm rendered with.
   -template-file string
     	Comma-delimited list of query files for templates and helpers.
   -values string
@@ -43,6 +45,10 @@ types map to flags like this:
 | Helper | `--helper-file` | `--helper-file test.serviceAccountName` |
 | Template | `--template-file` | `--template-file test/templates/deployment.yaml:42` |
 | Rendered manifest | `--rendered-file` | `--rendered-file test/templates/deployment.yaml:32` |
+
+Add `--resolve-values` to any query to also print what each `.Values.*` option
+read on the matched lines evaluated to at render time (see
+[Understanding output](output.md#relevant-values)).
 
 ```bash
 go run . --mode model \

@@ -30,6 +30,7 @@ chart directory:
   "helpers": ["test.serviceAccountName"],
   "templates": ["test/templates/deployment.yaml:42"],
   "rendered": ["test/templates/deployment.yaml:32"],
+  "resolve_values": true,
   "mode": "locate"
 }
 ```
@@ -46,6 +47,12 @@ chart directory:
 - `mode` defaults to `locate`, which returns compact source sites and referenced
   values as both text and structured fields (`sites`, `relevant_values`). Set
   `mode: "full"` for the complete execution flows with rendered write buffers.
+- `resolve_values` also resolves each `.Values.*` option on a matched line to the
+  value Helm rendered with, reported per site in `sites[].values` and as
+  `<expr> = <value>` in the text, where `<expr>` is `.Values.x` or `$.Values.x`.
+  Strings are quoted, so `""` means an empty value and `<unset>` means the option
+  was absent at render time. Root (`$.Values.x`) references resolve against the
+  root data even inside a `range`/`with` or an included helper.
 - When a query matches nothing, the response says so and suggests nearby known
   values, helpers, and templates instead of returning a silent empty report.
 

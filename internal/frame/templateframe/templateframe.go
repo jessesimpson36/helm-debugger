@@ -8,6 +8,7 @@ import (
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/jessesimpson36/helm-debugger/internal/display"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
+	"github.com/jessesimpson36/helm-debugger/internal/templatevalues"
 )
 
 // A mapper is helps bind a variable name to a common type
@@ -77,10 +78,27 @@ func (f *TemplateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 		}
 	}
 
+	resolveValues(f, execUnit)
+
 	bindResult := &frame.BindResult{
 		ExecutionUnit: execUnit,
 		RenderedLine:  nil,
 	}
 
 	return bindResult, nil
+}
+
+// resolveValues looks up the .Values.* references on the captured line against
+// the live debuggee and records the values Helm rendered with. It is a no-op
+// unless value resolution was enabled for the run. A non-nil (possibly empty)
+// ResolvedValues map distinguishes "resolution was attempted" from "disabled".
+func resolveValues(f *TemplateFrame, execUnit *frame.ExecutionUnit) {
+	if !f.ResolveValues || f.ValueResolver == nil {
+		return
+	}
+	if !templatevalues.Contains(execUnit.LineContent) {
+		return
+	}
+	refs := templatevalues.ParseReferences(execUnit.LineContent)
+	execUnit.ResolvedValues = f.ValueResolver.Resolve(refs)
 }

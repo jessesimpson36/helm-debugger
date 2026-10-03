@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
@@ -22,6 +23,10 @@ type Site struct {
 	Line   int    `json:"line"`
 	Source string `json:"source,omitempty"`
 	Helper string `json:"helper,omitempty"`
+	// Values holds the .Values.* references on this source line mapped to the
+	// values Helm rendered with. It is only populated when value resolution was
+	// enabled; the map keys omit the leading ".Values.".
+	Values map[string]string `json:"values,omitempty"`
 }
 
 // Located is the compact, machine-readable answer to a debug query. Unlike the
@@ -44,20 +49,21 @@ func Locate(flows []*executionflow.ExecutionFlow, cfg *settings.Settings) Locate
 	sections := Sections(flows, cfg)
 	located := Located{Sections: sections}
 
-	siteSeen := map[Site]struct{}{}
+	siteSeen := map[string]struct{}{}
 	valueSeen := map[string]struct{}{}
 	addSite := func(site Site) {
 		if site.File == "" {
 			return
 		}
-		if _, ok := siteSeen[site]; ok {
+		key := siteKey(site)
+		if _, ok := siteSeen[key]; ok {
 			return
 		}
 		if len(located.Sites) >= maxLocateSites {
 			located.Truncated = true
 			return
 		}
-		siteSeen[site] = struct{}{}
+		siteSeen[key] = struct{}{}
 		located.Sites = append(located.Sites, site)
 	}
 
@@ -120,12 +126,35 @@ func siteForUnit(unit *frame.ExecutionUnit) Site {
 	if unit.FunctionName != unit.FileName {
 		helper = unit.FunctionName
 	}
-	return Site{File: unit.FileName, Line: unit.LineNumber, Source: unit.LineContent, Helper: helper}
+	return Site{
+		File:   unit.FileName,
+		Line:   unit.LineNumber,
+		Source: unit.LineContent,
+		Helper: helper,
+		Values: unit.ResolvedValues,
+	}
+}
+
+// siteKey identifies a source location for deduplication. It deliberately
+// excludes Site.Values, which is not comparable, so the first capture of a
+// location wins.
+func siteKey(s Site) string {
+	return s.File + ":" + strconv.Itoa(s.Line) + ":" + s.Helper
 }
 
 func sortedStringSet(set map[string]struct{}) []string {
 	out := make([]string, 0, len(set))
 	for key := range set {
+		out = append(out, key)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sortedValueKeys returns the sorted keys of a resolved-values map.
+func sortedValueKeys(values map[string]string) []string {
+	out := make([]string, 0, len(values))
+	for key := range values {
 		out = append(out, key)
 	}
 	sort.Strings(out)
@@ -146,6 +175,9 @@ func LocateText(located Located, suggestions []string) string {
 		}
 		if site.Source != "" {
 			fmt.Fprintf(&b, "      %s\n", strings.TrimSpace(site.Source))
+		}
+		for _, expr := range sortedValueKeys(site.Values) {
+			fmt.Fprintf(&b, "      %s = %s\n", expr, site.Values[expr])
 		}
 	}
 	if located.Truncated {

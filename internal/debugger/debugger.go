@@ -18,6 +18,7 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
+	"github.com/jessesimpson36/helm-debugger/internal/templatevalues"
 )
 
 // maxSourceWarnings caps how many distinct source-resolution warnings are
@@ -71,6 +72,12 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 	}
 	for _, f := range frames {
 		f.ChartPath = cfg.ChartDirectory()
+	}
+	if cfg.ResolveValues {
+		// Only the line frame reads template source, so only it resolves
+		// .Values references.
+		frames[0].ResolveValues = true
+		frames[0].ValueResolver = templatevalues.NewResolver(session.Client, 1)
 	}
 
 	if err := session.Configure(frames); err != nil {
