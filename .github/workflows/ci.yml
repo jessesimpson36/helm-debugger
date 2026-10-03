@@ -30,7 +30,17 @@ jobs:
         run: go test -short ./...
 
   docker:
-    runs-on: ubuntu-latest
+    # arm64 runs natively on GitHub's arm64 runner; this is what makes Delve's
+    # ptrace work for Apple Silicon users, so exercise it here too.
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
     steps:
       - uses: actions/checkout@v4
       - name: Build deterministic image

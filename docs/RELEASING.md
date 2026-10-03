@@ -8,21 +8,19 @@ as a GitHub release. Tagging is the normal way to cut one.
 
 | Asset | Purpose |
 | --- | --- |
-| Docker image `vX.Y.Z`, `X.Y.Z`, `X.Y`, `X`, `latest` | The MCP server / CLI runtime. |
+| Docker image `vX.Y.Z`, `X.Y.Z`, `X.Y`, `X`, `latest` | The MCP server / CLI runtime, multi-arch (`linux/amd64`, `linux/arm64`). |
 | Docker image immutable toolchain tag | e.g. `go1.26.7-helm4.3.0-delve1.27.2`; pins exactly what is inside. |
 | `helm-debugger-vX.Y.Z-source.spdx.json` / `.cdx.json` | SBOM of the source tree and Go modules (SPDX and CycloneDX). |
-| `helm-debugger-vX.Y.Z-image.spdx.json` / `.cdx.json` | SBOM of the container image (SPDX and CycloneDX). |
+| `helm-debugger-vX.Y.Z-image-amd64.spdx.json` / `.cdx.json`, `…-image-arm64.…` | Per-platform SBOM of the container image (SPDX and CycloneDX). |
 | `metadata.json` | How the release was built: version, commit, build date, Go/Helm/Delve versions, image digest and platforms, SBOM filenames. |
 | `opencode-ghcr.json`, `opencode-dockerhub.json` | Canonical OpenCode MCP config pinned to this version (Docker Hub variant only when Docker Hub is configured). |
 | `install-mcp.sh` | Adds/updates the server in an OpenCode config; the upgrade helper. |
 | `SHA256SUMS` | Checksums for every asset above. |
 
-In addition, the image carries registry-native attestations:
-
-- a BuildKit **SBOM** attestation and `mode=max` **provenance** attestation
-  (`sbom: true`, `provenance: mode=max`), one per platform;
-- a GitHub **provenance** attestation pushed to the registry
-  (`actions/attest-build-provenance`).
+In addition, a GitHub **provenance** attestation is generated for the
+multi-arch image index and pushed to the registry
+(`actions/attest-build-provenance`), so `gh attestation verify` works against
+the published image.
 
 ## Cutting a release
 
@@ -48,8 +46,9 @@ it creates the tag at the checked-out commit if it does not exist yet.
 
 ## Required configuration
 
-- `GITHUB_TOKEN` is automatic. The workflow requests `contents: write`,
-  `packages: write`, `id-token: write`, and `attestations: write`.
+- `GITHUB_TOKEN` is automatic. The workflow requests `actions: write` (buildx
+  cache), `contents: write`, `packages: write`, `id-token: write`, and
+  `attestations: write`.
 - Publishing to GitHub Container Registry needs no extra secrets. The first
   push creates the package as **private**; set its visibility to public in the
   package settings (Package settings → Change visibility) so users can pull it.
@@ -71,10 +70,21 @@ in step.
 
 ## Multi-arch images
 
-`PLATFORMS` in the release workflow defaults to `linux/amd64`. Adding
-`linux/arm64` works, but Helm is compiled from source with
-`-gcflags="all=-N -l"` under QEMU emulation, which is slow. Change `PLATFORMS`
-only if the build stays within the CI budget.
+Each platform is built on its own **native** runner and pushed by digest, then
+a merge job assembles the manifest list:
+
+- `linux/amd64` builds on `ubuntu-latest`;
+- `linux/arm64` builds on `ubuntu-24.04-arm` (GitHub's arm64 runner, free for
+  public repositories).
+
+Nothing is emulated, so the arm64 image is fast to build and, more importantly,
+Delve works in it: ptrace is unimplemented under QEMU and broken under Rosetta,
+which is why Apple Silicon needs a native arm64 image rather than the amd64 one.
+
+`PLATFORMS` in the workflow should stay in sync with the image matrix. Adding a
+platform means adding a matrix entry with a matching `runner`/`platform`/`arch`.
+If the repository is ever made private, the `ubuntu-*-arm` labels stop working
+and you would need arm64 larger runners or QEMU.
 
 ## Verifying a release
 

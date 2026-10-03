@@ -190,15 +190,25 @@ Every release is built and published by
 [`.github/workflows/release.yml`](.github/workflows/release.yml); the process is
 documented in [`docs/RELEASING.md`](docs/RELEASING.md). A release contains:
 
-- the container image (the MCP server / CLI runtime) on GHCR and Docker Hub;
-- an **SBOM** for the source tree and for the image, in both SPDX and CycloneDX;
+- the container image (the MCP server / CLI runtime) on GHCR and Docker Hub,
+  built for `linux/amd64` and `linux/arm64` on native runners;
+- an **SBOM** for the source tree and for each platform image, in both SPDX and
+  CycloneDX;
 - **build metadata** (`metadata.json`) recording the source commit, build date,
   and the pinned Go, Helm, and Delve versions, plus the image digest;
 - a version-pinned **OpenCode MCP config** and the `install-mcp.sh` helper.
 
 The image also carries the same information as OCI labels and as
-`/usr/local/share/helm-debugger/version.txt`, and registry-native SBOM and
-provenance attestations.
+`/usr/local/share/helm-debugger/version.txt`, and a GitHub provenance
+attestation is pushed to the registry for `gh attestation verify`.
+
+### Apple Silicon
+
+The `linux/arm64` image runs natively on M-series Macs. This matters: the
+debugger drives Delve, which uses ptrace, and ptrace does not work under
+amd64-on-arm64 emulation (QEMU does not implement it, and Rosetta fails on
+register reads). Docker Desktop picks the arm64 image automatically, so no
+config change is needed on an Apple Silicon Mac.
 
 ### Upgrading
 

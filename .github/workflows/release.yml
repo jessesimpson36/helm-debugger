@@ -28,9 +28,9 @@ concurrency:
 env:
   IMAGE_GHCR: ghcr.io/${{ github.repository }}
   IMAGE_DOCKERHUB: docker.io/jessesimpson/helm-debugger
-  # Keep in sync with the base image platform support. Add linux/arm64 when the
-  # emulated helm build fits the CI budget.
-  PLATFORMS: linux/amd64
+  # Keep in sync with the image matrix below. These run natively (no QEMU), so
+  # Apple Silicon Macs pull a native linux/arm64 image and Delve's ptrace works.
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   # Resolve the release version and the pinned toolchain from one place so the
@@ -40,6 +40,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      build_date: ${{ steps.build_date.outputs.build_date }}
       go_version: ${{ steps.toolchain.outputs.go_version }}
       helm_version: ${{ steps.toolchain.outputs.helm_version }}
       delve_version: ${{ steps.toolchain.outputs.delve_version }}
@@ -58,6 +59,9 @@ jobs:
             echo "helm_version=${HELM_VERSION}"
             echo "delve_version=${DELVE_VERSION}"
           } >> "$GITHUB_OUTPUT"
+      - name: Build date
+        id: build_date
+        run: echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - name: Resolve version
         id: version
         run: |
@@ -110,20 +114,104 @@ jobs:
             helm-debugger-${{ needs.prepare.outputs.version }}-source.cdx.json
           if-no-files-found: error
 
-  # Build and push the container image (the MCP server runtime) to GHCR and,
-  # when Docker Hub credentials are configured, to Docker Hub as well.
+  # Build each platform on its own native runner (arm64 on ubuntu-24.04-arm, so
+  # no QEMU) and push it by digest. The merge job assembles the manifest list.
   image:
     needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            GO_VERSION=${{ needs.prepare.outputs.go_version }}
+            HELM_VERSION=${{ needs.prepare.outputs.helm_version }}
+            DELVE_VERSION=${{ needs.prepare.outputs.delve_version }}
+            VERSION=${{ needs.prepare.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ needs.prepare.outputs.build_date }}
+          outputs: type=image,name=${{ env.IMAGE_GHCR }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+      - name: Generate image SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: spdx-json
+          output-file: helm-debugger-${{ needs.prepare.outputs.version }}-image-${{ matrix.arch }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Generate image SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: cyclonedx-json
+          output-file: helm-debugger-${{ needs.prepare.outputs.version }}-image-${{ matrix.arch }}.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Upload image SBOMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-sbom-${{ matrix.arch }}
+          path: |
+            helm-debugger-${{ needs.prepare.outputs.version }}-image-${{ matrix.arch }}.spdx.json
+            helm-debugger-${{ needs.prepare.outputs.version }}-image-${{ matrix.arch }}.cdx.json
+          if-no-files-found: error
+
+  # Assemble the per-platform images into one manifest list and publish every
+  # tag. GHCR is the source of blobs; Docker Hub is mirrored by imagetools.
+  merge:
+    needs: [prepare, image]
     runs-on: ubuntu-latest
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
+      digest: ${{ steps.digest.outputs.digest }}
       dockerhub: ${{ steps.tags.outputs.dockerhub }}
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -144,7 +232,6 @@ jobs:
           version="${{ needs.prepare.outputs.version }}"
           numeric="${version#v}"
           prerelease="${{ needs.prepare.outputs.prerelease }}"
-          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           dockerhub=false
           [ -n "${DOCKERHUB_TOKEN:-}" ] && dockerhub=true
 
@@ -160,7 +247,7 @@ jobs:
           add "${IMAGE_GHCR}:${version}"
           add "${IMAGE_GHCR}:${numeric}"
           add "${IMAGE_GHCR}:${toolchain}"
-          if [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+          if [ "$dockerhub" = "true" ]; then
             add "${IMAGE_DOCKERHUB}:${version}"
             add "${IMAGE_DOCKERHUB}:${numeric}"
             add "${IMAGE_DOCKERHUB}:${toolchain}"
@@ -172,7 +259,7 @@ jobs:
             add "${IMAGE_GHCR}:${major_minor}"
             add "${IMAGE_GHCR}:${major}"
             add "${IMAGE_GHCR}:latest"
-            if [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+            if [ "$dockerhub" = "true" ]; then
               add "${IMAGE_DOCKERHUB}:${major_minor}"
               add "${IMAGE_DOCKERHUB}:${major}"
               add "${IMAGE_DOCKERHUB}:latest"
@@ -183,83 +270,57 @@ jobs:
             echo "tags<<EOF"
             echo "$tags"
             echo "EOF"
-            echo "build_date=${build_date}"
             echo "dockerhub=${dockerhub}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push image
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: ${{ env.PLATFORMS }}
-          push: true
-          tags: ${{ steps.tags.outputs.tags }}
-          build-args: |
-            GO_VERSION=${{ needs.prepare.outputs.go_version }}
-            HELM_VERSION=${{ needs.prepare.outputs.helm_version }}
-            DELVE_VERSION=${{ needs.prepare.outputs.delve_version }}
-            VERSION=${{ needs.prepare.outputs.version }}
-            COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ steps.tags.outputs.build_date }}
-          # Registry-native SBOM and provenance attestations, per platform.
-          sbom: true
-          provenance: mode=max
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create multi-arch manifest and push
+        id: create
+        run: |
+          set -euo pipefail
+          cd /tmp/digests
+          sources=()
+          for f in *; do sources+=("${IMAGE_GHCR}@sha256:${f}"); done
+          tag_args=()
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              tag_args+=("-t" "$tag")
+            fi
+          done <<< "${{ steps.tags.outputs.tags }}"
+          docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
 
-      - name: Attest image provenance
+      - name: Resolve published digest
+        id: digest
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          digest=$(docker buildx imagetools inspect "${IMAGE_GHCR}:${version}" --format '{{.Manifest.Digest}}' | tr -d '\n')
+          if [ -z "$digest" ]; then
+            echo "could not resolve published image digest" >&2
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "Published ${IMAGE_GHCR}:${version} -> ${digest}"
+          docker buildx imagetools inspect "${IMAGE_GHCR}:${version}"
+
+      - name: Attest multi-arch image provenance
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.IMAGE_GHCR }}
-          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
           push-to-registry: true
-
-      - name: Generate image SBOM (SPDX)
-        uses: anchore/sbom-action@v0
-        with:
-          # A multi-arch index is scanned for the runner's platform (linux/amd64);
-          # per-platform SBOMs are attached to the index by the build above.
-          image: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
-          registry-username: ${{ github.actor }}
-          registry-password: ${{ secrets.GITHUB_TOKEN }}
-          format: spdx-json
-          output-file: helm-debugger-${{ needs.prepare.outputs.version }}-image.spdx.json
-          upload-artifact: false
-          upload-release-assets: false
-
-      - name: Generate image SBOM (CycloneDX)
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
-          registry-username: ${{ github.actor }}
-          registry-password: ${{ secrets.GITHUB_TOKEN }}
-          format: cyclonedx-json
-          output-file: helm-debugger-${{ needs.prepare.outputs.version }}-image.cdx.json
-          upload-artifact: false
-          upload-release-assets: false
-
-      - name: Upload image SBOMs
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-sbom
-          path: |
-            helm-debugger-${{ needs.prepare.outputs.version }}-image.spdx.json
-            helm-debugger-${{ needs.prepare.outputs.version }}-image.cdx.json
-          if-no-files-found: error
 
   # Publish the GitHub release with the SBOMs, build metadata, checksums and
   # the canonical MCP configuration for this version.
   release:
-    needs: [prepare, image, sbom-source]
+    needs: [prepare, merge, sbom-source]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          # Only our SBOM artifacts. The buildx `type=gha` cache also shows up
-          # as an artifact and cannot be extracted by download-artifact.
-          pattern: "*-sbom"
+          # Only our SBOM artifacts. The buildx `type=gha` cache and digest
+          # artifacts also show up and must not be fetched here.
+          pattern: "*-sbom*"
           path: artifacts
           merge-multiple: true
       - name: Assemble release assets
@@ -269,8 +330,8 @@ jobs:
           GO_VERSION: ${{ needs.prepare.outputs.go_version }}
           HELM_VERSION: ${{ needs.prepare.outputs.helm_version }}
           DELVE_VERSION: ${{ needs.prepare.outputs.delve_version }}
-          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
-          DOCKERHUB_ENABLED: ${{ needs.image.outputs.dockerhub }}
+          IMAGE_DIGEST: ${{ needs.merge.outputs.digest }}
+          DOCKERHUB_ENABLED: ${{ needs.merge.outputs.dockerhub }}
           PLATFORMS: ${{ env.PLATFORMS }}
         run: |
           set -euo pipefail
@@ -280,15 +341,15 @@ jobs:
 
           VERSION="$VERSION" \
           COMMIT="$COMMIT" \
-          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          BUILD_DATE="${{ needs.prepare.outputs.build_date }}" \
           GO_VERSION="$GO_VERSION" \
           HELM_VERSION="$HELM_VERSION" \
           DELVE_VERSION="$DELVE_VERSION" \
           IMAGE="${IMAGE_GHCR}:${VERSION}" \
           IMAGE_DIGEST="$IMAGE_DIGEST" \
           PLATFORMS="$PLATFORMS" \
-          SBOM_SOURCE="helm-debugger-${VERSION}-source.spdx.json" \
-          SBOM_IMAGE="helm-debugger-${VERSION}-image.spdx.json" \
+          SBOM_SOURCE="helm-debugger-${VERSION}-source.spdx.json,helm-debugger-${VERSION}-source.cdx.json" \
+          SBOM_IMAGE="$(ls artifacts/helm-debugger-*-image-*.spdx.json artifacts/helm-debugger-*-image-*.cdx.json | sed 's|artifacts/||' | paste -sd, -)" \
             ./scripts/release-metadata.sh > release/metadata.json
 
           sed "s|__IMAGE__|${IMAGE_GHCR}:${VERSION}|" packaging/opencode.mcp.json > release/opencode-ghcr.json

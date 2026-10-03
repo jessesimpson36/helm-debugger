@@ -16,6 +16,22 @@ json_escape() {
   printf '%s' "${1:-}" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
 }
 
+# json_array turns a comma-separated list into a JSON array of strings.
+json_array() {
+  local first=1 item
+  printf '['
+  while IFS= read -r item; do
+    if [ -n "$item" ]; then
+      if [ "$first" -eq 0 ]; then
+        printf ', '
+      fi
+      printf '"%s"' "$(json_escape "$item")"
+      first=0
+    fi
+  done < <(printf '%s\n' "${1:-}" | tr ',' '\n')
+  printf ']'
+}
+
 version=${VERSION:?VERSION is required}
 commit=${COMMIT:-unknown}
 build_date=${BUILD_DATE:-unknown}
@@ -53,8 +69,8 @@ cat <<JSON
     "platforms": "$(json_escape "$platforms")"
   },
   "sbom": {
-    "source": "$(json_escape "$sbom_source")",
-    "image": "$(json_escape "$sbom_image")"
+    "source": $(json_array "$sbom_source"),
+    "image": $(json_array "$sbom_image")
   },
   "source": {
     "repository": "https://github.com/jessesimpson36/helm-debugger",
