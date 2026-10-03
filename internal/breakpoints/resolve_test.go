@@ -65,6 +65,10 @@ func (s *state) evalField(dot reflect.Value, fieldName string, node parse.Node, 
 	}
 	return zero
 }
+
+func (t *Template) Execute(wr io.Writer, data any) error {
+	return t.execute(wr, data)
+}
 `
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exec.go")
@@ -81,6 +85,7 @@ func (s *state) evalField(dot reflect.Value, fieldName string, node parse.Node, 
 		LineStart:        findLine(t, fixture, "func (s *state) walk(dot") + 1, // s.at(node) on next line
 		RenderedManifest: findLine(t, fixture, "s.wr.Write(node.Text)"),
 		EvalFieldReturn:  findLine(t, fixture, "return result"),
+		Execute:          findLine(t, fixture, "return t.execute(wr, data)"),
 	}
 	if got != want {
 		t.Fatalf("resolveFile = %+v, want %+v", got, want)

@@ -15,6 +15,8 @@ func GetFrameType(undeterminedFrame *frame.Frame) string {
 			return "line"
 		} else if strings.HasPrefix(breakpoint.Name, "rendered") {
 			return "rendered"
+		} else if strings.HasPrefix(breakpoint.Name, "templateexecute") {
+			return "line"
 		}
 	}
 	return ""

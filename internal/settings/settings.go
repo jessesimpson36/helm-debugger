@@ -86,6 +86,27 @@ func (s *Settings) Validate() error {
 	return nil
 }
 
+// ScopedTemplateNames returns the template/helper names that a filter selects,
+// suitable for a Delve breakpoint condition on (*Template).Execute. It is empty
+// when no filter names a template or helper, in which case no scoped breakpoint
+// is installed and the debugger falls back to the walk breakpoint alone.
+//
+// Helm prefixes define names with the chart name (e.g. "test.serviceAccountName")
+// and file templates with the chart path (e.g. "test/templates/deployment.yaml").
+// The provided filters may be the bare helper name, the full defined name, or a
+// file path; every spelling that could match is included so the condition is a
+// safe superset. Exactness is not required because the debugger still applies
+// the ordinary query filter to the captured flows.
+func (s *Settings) ScopedTemplateNames() []string {
+	if s == nil {
+		return nil
+	}
+	var names []string
+	names = append(names, s.HelpersQueryFiles...)
+	names = append(names, s.TemplateQueryFiles...)
+	return names
+}
+
 // EffectiveWorkingDir returns the directory chart paths are resolved from.
 func (s *Settings) EffectiveWorkingDir() string {
 	if s.WorkingDir != "" {

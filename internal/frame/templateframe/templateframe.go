@@ -3,6 +3,7 @@ package templateframe
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
@@ -21,9 +22,11 @@ type Mapper map[string]string
 var loadConfig = api.LoadConfig{
 	FollowPointers:     true,
 	MaxVariableRecurse: 10,
-	MaxStringLen:       10000,
-	MaxArrayValues:     10000,
-	MaxStructFields:    -1,
+	// Templates are read in full to map node byte offsets to line numbers, so
+	// this must cover the largest template text, not just a field value.
+	MaxStringLen:    1 << 22,
+	MaxArrayValues:  10000,
+	MaxStructFields: -1,
 }
 
 type TemplateFrame frame.Frame
@@ -62,6 +65,16 @@ func (f *TemplateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 			execUnit.LineNumber = lineNum
 		case "FileName":
 			execUnit.FileName = mappedVal
+		case "RootOffset":
+			// A template executed at (t *Template).Execute has no node; the root
+			// node's byte offset is turned into a line using the template text.
+			offset, err := strconv.Atoi(mappedVal)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to convert RootOffset to int: %w", err)
+			}
+			execUnit.LineNumber = lineAtOffset(respVars[f.Mapper["TreeText"]], offset)
+		case "TreeText":
+			// Consumed via RootOffset above; nothing to bind directly.
 		default:
 			return nil, fmt.Errorf("Unknown key in mapper: %s", key)
 		}
@@ -86,6 +99,18 @@ func (f *TemplateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 	}
 
 	return bindResult, nil
+}
+
+// lineAtOffset returns the 1-based line containing byte offset in text. The
+// template engine records node positions as byte offsets into the template text.
+func lineAtOffset(text string, offset int) int {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(text) {
+		offset = len(text)
+	}
+	return 1 + strings.Count(text[:offset], "\n")
 }
 
 // resolveValues looks up the .Values.* references on the captured line against

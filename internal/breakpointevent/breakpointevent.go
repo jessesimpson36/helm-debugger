@@ -9,6 +9,10 @@ func Process(breakpointEvents []*frame.BindResult) []*executionflow.ExecutionFlo
 	flows := []*executionflow.ExecutionFlow{}
 	first := true
 	executionFlow := &executionflow.ExecutionFlow{}
+	// helperseen dedupes helper frames within the current flow. A helper line can
+	// be reported by both the walk breakpoint and the scoped execute breakpoint;
+	// the duplicate adds no information and would otherwise appear twice.
+	helpersSeen := map[unitKey]struct{}{}
 	// prevFlow points at the most recently completed flow. When a new template
 	// starts, the next rendered buffer snapshot is the "after" state of the
 	// previous flow, so it is recorded there as well. It starts nil because the
@@ -34,9 +38,15 @@ func Process(breakpointEvents []*frame.BindResult) []*executionflow.ExecutionFlo
 				flows = append(flows, executionFlow)
 				prevFlow = executionFlow
 				executionFlow = &executionflow.ExecutionFlow{}
+				helpersSeen = map[unitKey]struct{}{}
 				executionFlow.Template = execUnit
 				executionflow.FillValuesReferences(executionFlow, execUnit)
 			} else {
+				key := unitKey{execUnit.FileName, execUnit.LineNumber, execUnit.FunctionName}
+				if _, seen := helpersSeen[key]; seen {
+					continue
+				}
+				helpersSeen[key] = struct{}{}
 				executionflow.FillValuesReferences(executionFlow, execUnit)
 				executionFlow.Helpers = append(executionFlow.Helpers, execUnit)
 			}
@@ -55,4 +65,11 @@ func Process(breakpointEvents []*frame.BindResult) []*executionflow.ExecutionFlo
 		flows = append(flows, executionFlow)
 	}
 	return flows
+}
+
+// unitKey identifies an execution unit for deduplication within a flow.
+type unitKey struct {
+	file     string
+	line     int
+	function string
 }

@@ -54,6 +54,25 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestScopedTemplateNames(t *testing.T) {
+	cfg := &Settings{
+		HelpersQueryFiles:  []string{"a.fullname"},
+		TemplateQueryFiles: []string{"chart/templates/deployment.yaml:42"},
+		ValuesQuery:        []string{"image.tag"},
+	}
+	got := cfg.ScopedTemplateNames()
+	want := []string{"a.fullname", "chart/templates/deployment.yaml:42"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ScopedTemplateNames = %#v, want %#v", got, want)
+	}
+	if (&Settings{ValuesQuery: []string{"image.tag"}}).ScopedTemplateNames() != nil {
+		t.Fatal("expected no scoped names for a values-only query")
+	}
+	if (*Settings)(nil).ScopedTemplateNames() != nil {
+		t.Fatal("expected nil for a nil settings")
+	}
+}
+
 func TestCloneIsIndependent(t *testing.T) {
 	cfg := &Settings{CommandArgs: []string{"a"}, ValuesQuery: []string{"b"}}
 	clone := cfg.Clone()
