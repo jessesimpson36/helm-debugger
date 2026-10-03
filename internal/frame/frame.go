@@ -2,6 +2,7 @@ package frame
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
@@ -12,7 +13,10 @@ type Frame struct {
 	Breakpoints []*api.Breakpoint
 	ReqVars     []string
 	Mapper      Mapper
-	ChartPath   string // Path to the helm chart directory (from --chart flag)
+	// ChartPath is the path to the helm chart directory being debugged. It is
+	// used to resolve runtime template names (which helm prefixes with the
+	// Chart.yaml name) back to files on disk.
+	ChartPath string
 }
 
 type RenderedLine struct {
@@ -26,6 +30,9 @@ type ExecutionUnit struct {
 	LineNumber   int
 	FileName     string
 	LineContent  string
+	// SourceError is set when the source line could not be read from disk. The
+	// execution unit is still reported; only LineContent is missing.
+	SourceError string
 }
 
 // A mapper is helps bind a variable name to a common type
@@ -45,23 +52,23 @@ type FrameBinder interface {
 	Bind(respVars map[string]string) (*BindResult, error)
 }
 
-func (ex *BindResult) Display(isHelper bool) error {
+func (ex *BindResult) Display(w io.Writer, isHelper bool) error {
 	if ex.ExecutionUnit != nil {
-		return ex.ExecutionUnit.Display(isHelper)
+		return ex.ExecutionUnit.Display(w, isHelper)
 	}
 	return nil
 }
 
-func (ex *ExecutionUnit) Display(isHelper bool) error {
+func (ex *ExecutionUnit) Display(w io.Writer, isHelper bool) error {
 	indent := ""
 	if isHelper {
 		indent = "  "
 	}
-	fmt.Printf("%s%s:%d\n", indent, ex.FileName, ex.LineNumber)
+	fmt.Fprintf(w, "%s%s:%d\n", indent, ex.FileName, ex.LineNumber)
 	if ex.FunctionName != ex.FileName {
-		fmt.Printf("%s  in %s\n", indent, ex.FunctionName)
+		fmt.Fprintf(w, "%s  in %s\n", indent, ex.FunctionName)
 	}
-	fmt.Printf("%s    ", indent)
-	fmt.Print(ex.LineContent + "\n")
+	fmt.Fprintf(w, "%s    ", indent)
+	fmt.Fprint(w, ex.LineContent+"\n")
 	return nil
 }

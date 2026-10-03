@@ -3,15 +3,17 @@ package display
 import (
 	"bufio"
 	"fmt"
+	"os"
+
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
-	"os"
 )
 
+// ReadOneLine reads a single 1-based line from fileName. Callers are
+// responsible for reporting a failure; this function does not write to stderr.
 func ReadOneLine(fileName string, lineNumber int) (string, error) {
 	file, err := os.Open(fileName)
 	if err != nil {
-		fmt.Println("Error opening file:", err)
 		return "", err
 	}
 	defer file.Close()
@@ -23,14 +25,13 @@ func ReadOneLine(fileName string, lineNumber int) (string, error) {
 	for scanner.Scan() {
 		if currentLine == lineNumber-1 {
 			returned = scanner.Text()
-			// fmt.Println(returned)
 			break
 		}
 		currentLine++
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Error reading file:", err)
+		return "", err
 	}
 	return returned, nil
 }

@@ -2,20 +2,28 @@ package settings
 
 import (
 	"flag"
+	"fmt"
+	"path/filepath"
 	"strings"
 )
 
 type Settings struct {
 	ChartName          string
-	CommandArgs        string
+	CommandArgs        []string
 	CompiledHelmPath   string
-	Mode	           string
+	Mode               string
+	GoRoot             string
+	WorkingDir         string
+	DebugPort          int
 	RenderedQueryFiles []string
 	TemplateQueryFiles []string
 	HelpersQueryFiles  []string
 	ValuesQuery        []string
 }
 
+// NewSettings builds settings from command line flags. It is used by the CLI
+// modes. The MCP server constructs a Settings value directly instead of going
+// through flags.
 func NewSettings() *Settings {
 	settings := &Settings{}
 
@@ -23,37 +31,87 @@ func NewSettings() *Settings {
 	commaDelimitedTemplateQueryFiles := ""
 	commaDelimitedHelpersQueryFiles := ""
 	commaDelimitedValuesQuery := ""
+	rawCommandArgs := ""
 
 	flag.StringVar(&settings.ChartName, "chart", "", "The name of the Helm chart to debug.")
 	flag.StringVar(&commaDelimitedRenderedQueryFiles, "rendered-file", "", "Comma-delimited list of query files for rendered manifest.")
 	flag.StringVar(&commaDelimitedTemplateQueryFiles, "template-file", "", "Comma-delimited list of query files for templates and helpers.")
 	flag.StringVar(&commaDelimitedHelpersQueryFiles, "helper-file", "", "Comma-delimited list of query files for helpers.")
 	flag.StringVar(&commaDelimitedValuesQuery, "values", "", "Comma-delimited list of values queries to capture.")
-	flag.StringVar(&settings.CommandArgs, "extra-command-args", "", "Additional command line arguments to pass to 'helm template' command.")
-	flag.StringVar(&settings.Mode, "mode", "model", "Mode of operation: model, branch, line")
+	flag.StringVar(&rawCommandArgs, "extra-command-args", "", "Additional command line arguments to pass to 'helm template' command.")
+	flag.StringVar(&settings.Mode, "mode", "model", "Mode of operation: model, branch, line, mcp")
 	flag.StringVar(&settings.CompiledHelmPath, "helm-path", "helm", "Path to the compiled Helm binary.")
+	flag.StringVar(&settings.GoRoot, "goroot", "", "GOROOT used to resolve text/template breakpoints. Defaults to the debugger's own GOROOT.")
+	flag.StringVar(&settings.WorkingDir, "working-dir", "", "Directory the helm chart paths are relative to. Defaults to the current directory.")
+	flag.IntVar(&settings.DebugPort, "debug-port", 0, "Port for the headless delve server. 0 picks a free port.")
 
 	flag.Parse()
 
-	if commaDelimitedRenderedQueryFiles != "" {
-		for _, file := range strings.Split(commaDelimitedRenderedQueryFiles, ",") {
-			settings.RenderedQueryFiles = append(settings.RenderedQueryFiles, strings.TrimSpace(file))
-		}
-	}
-	if commaDelimitedTemplateQueryFiles != "" {
-		for _, file := range strings.Split(commaDelimitedTemplateQueryFiles, ",") {
-			settings.TemplateQueryFiles = append(settings.TemplateQueryFiles, strings.TrimSpace(file))
-		}
-	}
-	if commaDelimitedHelpersQueryFiles != "" {
-		for _, file := range strings.Split(commaDelimitedHelpersQueryFiles, ",") {
-			settings.HelpersQueryFiles = append(settings.HelpersQueryFiles, strings.TrimSpace(file))
-		}
-	}
-	if commaDelimitedValuesQuery != "" {
-		for _, query := range strings.Split(commaDelimitedValuesQuery, ",") {
-			settings.ValuesQuery = append(settings.ValuesQuery, strings.TrimSpace(query))
-		}
-	}
+	settings.RenderedQueryFiles = SplitCommaDelimited(commaDelimitedRenderedQueryFiles)
+	settings.TemplateQueryFiles = SplitCommaDelimited(commaDelimitedTemplateQueryFiles)
+	settings.HelpersQueryFiles = SplitCommaDelimited(commaDelimitedHelpersQueryFiles)
+	settings.ValuesQuery = SplitCommaDelimited(commaDelimitedValuesQuery)
+	settings.CommandArgs = SplitArgs(rawCommandArgs)
+
 	return settings
+}
+
+// SplitCommaDelimited splits a comma-delimited flag value, trimming whitespace
+// from each entry and dropping empty entries.
+func SplitCommaDelimited(value string) []string {
+	if value == "" {
+		return nil
+	}
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(item); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+// Validate checks that the settings are sufficient to run the debugger.
+func (s *Settings) Validate() error {
+	if s.ChartName == "" {
+		return fmt.Errorf("chart is required")
+	}
+	if s.CompiledHelmPath == "" {
+		return fmt.Errorf("helm-path is required")
+	}
+	return nil
+}
+
+// EffectiveWorkingDir returns the directory chart paths are resolved from.
+func (s *Settings) EffectiveWorkingDir() string {
+	if s.WorkingDir != "" {
+		return s.WorkingDir
+	}
+	return "."
+}
+
+// ChartDirectory returns the on-disk path of the chart being debugged. The
+// resolver uses it to map runtime template names (which helm prefixes with the
+// Chart.yaml name) back to source files, including subcharts and .tgz
+// dependencies.
+func (s *Settings) ChartDirectory() string {
+	if s.ChartName == "" {
+		return s.EffectiveWorkingDir()
+	}
+	if filepath.IsAbs(s.ChartName) {
+		return filepath.Clean(s.ChartName)
+	}
+	return filepath.Join(s.EffectiveWorkingDir(), s.ChartName)
+}
+
+// Clone returns a shallow copy of the settings with its slice fields copied.
+// It is used to derive per-request settings without mutating shared state.
+func (s *Settings) Clone() *Settings {
+	clone := *s
+	clone.CommandArgs = append([]string(nil), s.CommandArgs...)
+	clone.RenderedQueryFiles = append([]string(nil), s.RenderedQueryFiles...)
+	clone.TemplateQueryFiles = append([]string(nil), s.TemplateQueryFiles...)
+	clone.HelpersQueryFiles = append([]string(nil), s.HelpersQueryFiles...)
+	clone.ValuesQuery = append([]string(nil), s.ValuesQuery...)
+	return &clone
 }

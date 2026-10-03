@@ -156,7 +156,14 @@ func parseChartNameFromFile(chartYamlPath string) (string, error) {
 		line := scanner.Text()
 		matches := nameRegex.FindStringSubmatch(line)
 		if len(matches) >= 2 {
-			return strings.TrimSpace(matches[1]), nil
+			name := strings.TrimSpace(matches[1])
+			// Strip an inline comment and surrounding quotes so values like
+			// `name: "mychart" # note` compare cleanly against template prefixes.
+			if i := strings.Index(name, " #"); i >= 0 {
+				name = strings.TrimSpace(name[:i])
+			}
+			name = strings.Trim(name, `"'`)
+			return name, nil
 		}
 	}
 

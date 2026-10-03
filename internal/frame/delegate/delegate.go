@@ -46,6 +46,7 @@ func (d *DelegateFrame) Gather(client *rpc2.RPCClient) (map[string]string, error
 			Breakpoints: d.Breakpoints,
 			ReqVars:     d.ReqVars,
 			Mapper:      d.Mapper,
+			ChartPath:   d.ChartPath,
 		}
 		return rmFrame.Gather(client)
 	default:
@@ -75,6 +76,7 @@ func (d *DelegateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 			Breakpoints: d.Breakpoints,
 			ReqVars:     d.ReqVars,
 			Mapper:      d.Mapper,
+			ChartPath:   d.ChartPath,
 		}
 		return rmFrame.Bind(respVars)
 	default:

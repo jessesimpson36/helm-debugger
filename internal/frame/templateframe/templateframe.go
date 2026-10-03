@@ -67,9 +67,13 @@ func (f *TemplateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 		if execUnit.FunctionName != "" && execUnit.FileName != "" && execUnit.LineNumber != 0 {
 			lineContent, err := display.ResolveAndReadOneLine(f.ChartPath, execUnit.FileName, execUnit.LineNumber)
 			if err != nil {
-				return nil, fmt.Errorf("Failed to read line content: %w", err)
+				// Keep the execution unit so the flow is still reported; only
+				// the source line is missing. debugger.Run surfaces SourceError
+				// as a warning.
+				execUnit.SourceError = err.Error()
+			} else {
+				execUnit.LineContent = lineContent
 			}
-			execUnit.LineContent = lineContent
 		}
 	}
 
