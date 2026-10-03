@@ -1,8 +1,9 @@
 # Releasing
 
-A release is produced by `.github/workflows/release.yml`. It builds and pushes
-the Docker image, generates SBOMs and build metadata, and publishes everything
-as a GitHub release. Tagging is the normal way to cut one.
+A release is produced by
+[`.github/workflows/release.yml`](https://github.com/jessesimpson36/helm-debugger/blob/main/.github/workflows/release.yml).
+It builds and pushes the Docker image, generates SBOMs and build metadata, and
+publishes everything as a GitHub release. Tagging is the normal way to cut one.
 
 ## What a release contains
 
@@ -36,22 +37,22 @@ git tag -a v0.2.0 -m "v0.2.0"
 git push origin v0.2.0
 ```
 
-A tag containing a hyphen (`v0.2.0-rc.1`) is published as a GitHub
-prerelease and does not move `latest`, the major tag, or the minor tag.
+A tag containing a hyphen (`v0.2.0-rc.1`) is published as a GitHub prerelease
+and does not move `latest`, the major tag, or the minor tag.
 
 ## Manual runs
 
 Use **Actions → Release → Run workflow** and provide a version such as
-`v0.2.0`. This is meant for re-cutting a release or publishing from a branch;
-it creates the tag at the checked-out commit if it does not exist yet.
+`v0.2.0`. This is meant for re-cutting a release or publishing from a branch; it
+creates the tag at the checked-out commit if it does not exist yet.
 
 ## Required configuration
 
 - `GITHUB_TOKEN` is automatic. The workflow requests `actions: write` (buildx
   cache), `contents: write`, `packages: write`, `id-token: write`, and
   `attestations: write`.
-- Publishing to GitHub Container Registry needs no extra secrets. The first
-  push creates the package as **private**; set its visibility to public in the
+- Publishing to GitHub Container Registry needs no extra secrets. The first push
+  creates the package as **private**; set its visibility to public in the
   package settings (Package settings → Change visibility) so users can pull it.
 - Publishing to Docker Hub is optional. Add repository secrets
   `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`; without them only GHCR is
@@ -64,23 +65,24 @@ it creates the tag at the checked-out commit if it does not exist yet.
 and the release workflow reads it, so updating that one file changes the CLI
 build, the image, and the release metadata together.
 
-When bumping Go, also update the `go` directive in `go.mod`. The `ARG`
-defaults in `Dockerfile` and the fallbacks in `docker-compose.yml` mirror
+When bumping Go, also update the `go` directive in `go.mod`. The `ARG` defaults
+in `Dockerfile` and the fallbacks in `docker-compose.yml` mirror
 `toolchain.env` for people who build the image without the Makefile; keep them
 in step.
 
 ## Multi-arch images
 
-Each platform is built on its own **native** runner and pushed by digest, then
-a merge job assembles the manifest list:
+Each platform is built on its own **native** runner and pushed by digest, then a
+merge job assembles the manifest list:
 
 - `linux/amd64` builds on `ubuntu-latest`;
 - `linux/arm64` builds on `ubuntu-24.04-arm` (GitHub's arm64 runner, free for
   public repositories).
 
 Nothing is emulated, so the arm64 image is fast to build and, more importantly,
-Delve works in it: ptrace is unimplemented under QEMU and broken under Rosetta,
-which is why Apple Silicon needs a native arm64 image rather than the amd64 one.
+Delve works in it: `ptrace` is unimplemented under QEMU and broken under
+Rosetta, which is why Apple Silicon needs a native arm64 image rather than the
+amd64 one.
 
 `PLATFORMS` in the workflow should stay in sync with the image matrix. Adding a
 platform means adding a matrix entry with a matching `runner`/`platform`/`arch`.

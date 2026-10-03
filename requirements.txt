@@ -1,0 +1,11 @@
+# Static site generator for the documentation in docs/.
+#
+# Zensical is the successor to Material for MkDocs and reads this project's
+# mkdocs.yml, so the sources stay portable. It renders the Material-style
+# "classic" theme.
+zensical==0.0.67
+
+# Fallback: Material for MkDocs can build the same project (it is in critical
+# maintenance through May 5, 2027). Uncomment to build with `mkdocs` instead of
+# `zensical`:
+# mkdocs-material==9.7.7

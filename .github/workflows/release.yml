@@ -2,7 +2,7 @@ name: Release
 
 # Pushing a semver tag (v0.1.0, v0.2.0-rc.1, ...) cuts a release. Manual runs
 # are for re-cutting a release or publishing from a branch; they need a version
-# input. See docs/RELEASING.md.
+# input. See docs/contributing/releasing.md.
 on:
   push:
     tags:

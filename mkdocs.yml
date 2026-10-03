@@ -1,0 +1,66 @@
+site_name: Helm Debugger
+site_description: >-
+  Debug Helm charts by tracing values.yaml through _helpers.tpl into the
+  rendered manifests.
+site_url: https://jessesimpson36.github.io/helm-debugger/
+repo_url: https://github.com/jessesimpson36/helm-debugger
+repo_name: jessesimpson36/helm-debugger
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  # Zensical's Material-compatible appearance. (Ignored by mkdocs-material,
+  # which always uses the Material look.)
+  variant: classic
+  language: en
+  features:
+    - navigation.tracking
+    - navigation.top
+    - navigation.sections
+    - navigation.indexes
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: lucide/sun-moon
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: lucide/sun
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: lucide/moon
+        name: Switch to system preference
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Concepts: concepts.md
+  - CLI reference: cli.md
+  - MCP server: mcp-server.md
+  - Understanding output: output.md
+  - Releases and upgrading: releases.md
+  - Contributing:
+      - Releasing: contributing/releasing.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
