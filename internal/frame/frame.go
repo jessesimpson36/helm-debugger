@@ -30,6 +30,10 @@ type RenderedLine struct {
 	//CharPosition int
 	//FileName     string
 	Content string
+	// Owner is the runtime name of the top-level template whose execution was
+	// rendering when this snapshot was taken. It ties the buffer to the right
+	// flow regardless of which breakpoints fired.
+	Owner string
 }
 
 type ExecutionUnit struct {
@@ -44,6 +48,10 @@ type ExecutionUnit struct {
 	// "$.Values.name") to the value Helm saw at render time. It is nil unless
 	// value resolution was enabled for the run.
 	ResolvedValues map[string]string
+	// Owner is the runtime name of the top-level template whose execution this
+	// unit belongs to. Flow assembly groups by Owner, so it does not depend on
+	// the debugger stopping on every node.
+	Owner string
 }
 
 // A mapper is helps bind a variable name to a common type

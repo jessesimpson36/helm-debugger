@@ -118,6 +118,7 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 
 	var events []*frame.BindResult
 	var captures []*fieldCapture
+	owner := newOwnerTracker(session.Client, runPlan.rendered)
 	for {
 		if state == nil || state.Exited {
 			break
@@ -148,15 +149,20 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 			continue
 		}
 
-		// A relevant template/helper is starting; enable the walk breakpoint so
-		// its nodes are captured. The walk breakpoint cannot enable itself: when
-		// it is disabled there are no walk stops, so the Execute trigger is the
-		// only place the gate can turn it on.
-		if gate != nil && breakpointName(state) == "templateexecute" {
-			gate.OnEnter(session.Client)
-		}
-		if gate != nil && breakpointName(state) == "linestart" {
-			gate.AtWalk()
+		// Keep the flow owner current before stamping the event. A relevant
+		// template/helper is starting on an Execute stop; a walk stop reports
+		// whichever template is executing.
+		switch breakpointName(state) {
+		case "templateexecute":
+			owner.OnExecute()
+			if gate != nil {
+				gate.OnEnter(session.Client)
+			}
+		case "linestart":
+			owner.OnWalk()
+			if gate != nil {
+				gate.AtWalk()
+			}
 		}
 
 		respVars, gatherErr := currentFrame.Gather(session.Client)
@@ -165,6 +171,7 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 		} else if event, bindErr := currentFrame.Bind(respVars); bindErr != nil {
 			// Expected for nodes that are not actions/conditionals; skip.
 		} else if event != nil {
+			stampOwner(event, owner.Current())
 			events = append(events, event)
 		}
 
@@ -191,6 +198,9 @@ type plan struct {
 	// walkNames is the set of template names whose subtree should be walked. It
 	// is empty when the walk breakpoint should stay unconditionally enabled.
 	walkNames []string
+	// rendered is the runtime names of the chart's top-level (rendered)
+	// templates. Flow ownership is assigned from this set.
+	rendered []string
 }
 
 // planFrames builds the breakpoint frames for a run. It always includes the walk
@@ -241,6 +251,7 @@ func planFrames(ctx context.Context, cfg *settings.Settings, lines breakpoints.L
 		frames:    []*delegate.DelegateFrame{walk, rendered, scoped},
 		walkBP:    walk.Breakpoints[0],
 		walkNames: walkNames,
+		rendered:  renderedNames,
 	}
 }
 
@@ -259,6 +270,20 @@ func dedupe(names []string) []string {
 		out = append(out, name)
 	}
 	return out
+}
+
+// stampOwner records the owning top-level template on an event so flow assembly
+// can group by it instead of inferring boundaries from the stop sequence.
+func stampOwner(event *frame.BindResult, owner string) {
+	if event == nil || owner == "" {
+		return
+	}
+	if event.ExecutionUnit != nil {
+		event.ExecutionUnit.Owner = owner
+	}
+	if event.RenderedLine != nil {
+		event.RenderedLine.Owner = owner
+	}
 }
 
 // breakpointName returns the name of the breakpoint the debugger is stopped at,

@@ -94,18 +94,42 @@ func WarningsText(warnings []string) string {
 	return b.String()
 }
 
+// dedupeValuesReferences collapses repeated options within a flow, keeping the
+// first occurrence (and its resolved value). A gated run can report the same
+// option from more than one captured line.
+func dedupeValuesReferences(refs []*executionflow.ValuesReference) []*executionflow.ValuesReference {
+	seen := map[string]struct{}{}
+	out := make([]*executionflow.ValuesReference, 0, len(refs))
+	for _, ref := range refs {
+		key := ref.ValuesName
+		if ref.Root {
+			key = "$." + key
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, ref)
+	}
+	return out
+}
+
 func writeFlow(w io.Writer, flow *executionflow.ExecutionFlow) {
 	if flow == nil {
 		return
 	}
 	if flow.Template != nil {
 		_ = flow.Template.Display(w, false)
+	} else if flow.Owner != "" {
+		// The walk breakpoint was gated, so the template's own lines were not
+		// captured; still name the template the flow belongs to.
+		fmt.Fprintf(w, "%s\n", flow.Owner)
 	}
 	for _, helper := range flow.Helpers {
 		_ = helper.Display(w, true)
 	}
 	fmt.Fprintln(w, "Relevant Values")
-	for _, valRef := range flow.ValuesReference {
+	for _, valRef := range dedupeValuesReferences(flow.ValuesReference) {
 		name := valRef.ValuesName
 		if valRef.Root {
 			name = "$.Values." + valRef.ValuesName

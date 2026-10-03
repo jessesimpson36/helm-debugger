@@ -25,6 +25,28 @@ import (
 // sourceComment matches a rendered manifest's origin, e.g. "# Source: mychart/templates/deployment.yaml".
 var sourceComment = regexp.MustCompile(`(?m)^# Source: (.+?)\s*$`)
 
+// withoutShowOnly returns args with every `--show-only <value>` pair removed, so
+// the pre-pass renders and reports all templates regardless of which ones the
+// caller wants rendered output for. It handles `--show-only=x` and
+// `--show-only x` spellings.
+func withoutShowOnly(args []string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--show-only":
+			// Skip the flag and its value.
+			i++
+			continue
+		case strings.HasPrefix(arg, "--show-only="):
+			continue
+		default:
+			out = append(out, arg)
+		}
+	}
+	return out
+}
+
 // resolveHelmBinary finds the helm binary the way dlvcontroller does. The path
 // is resolved against the debugger process's working directory (not the chart's
 // working_dir, which only affects where helm runs), so both call sites agree.
@@ -55,7 +77,10 @@ func RenderedTemplates(ctx context.Context, cfg *settings.Settings) ([]string, e
 		return nil, err
 	}
 
-	args := append([]string{"template", cfg.ChartName}, cfg.CommandArgs...)
+	// The pre-pass must see every template that renders, but --show-only limits
+	// what helm prints. Strip it so the discovered set matches what the debuggee
+	// actually executes; the debuggee still runs with the caller's full args.
+	args := append([]string{"template", cfg.ChartName}, withoutShowOnly(cfg.CommandArgs)...)
 	cmd := exec.CommandContext(ctx, helmBinary, args...)
 	cmd.Dir = cfg.EffectiveWorkingDir()
 	// Rendering twice (pre-pass then debuggee) must not mutate shared state.

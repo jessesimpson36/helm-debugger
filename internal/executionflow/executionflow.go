@@ -10,6 +10,11 @@ type ExecutionFlow struct {
 	Helpers          []*frame.ExecutionUnit
 	ValuesReference  []*ValuesReference
 	RenderedManifest []*frame.RenderedLine
+	// Owner is the runtime name of the top-level rendered template this flow
+	// belongs to. It is always set, even when no execution unit was captured for
+	// the template itself (for example when the walk breakpoint is gated to a
+	// helper's subtree), so the report still knows the anchor.
+	Owner string
 }
 
 type ValuesReference struct {
@@ -41,19 +46,20 @@ func GetValuesReferences(execUnit *frame.ExecutionUnit) []string {
 }
 
 func FillValuesReferences(flow *ExecutionFlow, execUnit *frame.ExecutionUnit) {
-	if ContainsValuesReference(execUnit) {
-		for _, ref := range templatevalues.ParseReferences(execUnit.LineContent) {
-			valRef := &ValuesReference{
-				ExecutionUnit: execUnit,
-				ValuesName:    ref.Path,
-				Root:          ref.Root,
-			}
-			if execUnit.ResolvedValues != nil {
-				valRef.Resolved = true
-				valRef.Values, valRef.Found = execUnit.ResolvedValues[ref.Expr()]
-			}
-			flow.ValuesReference = append(flow.ValuesReference, valRef)
+	if !ContainsValuesReference(execUnit) {
+		return
+	}
+	for _, ref := range templatevalues.ParseReferences(execUnit.LineContent) {
+		valRef := &ValuesReference{
+			ExecutionUnit: execUnit,
+			ValuesName:    ref.Path,
+			Root:          ref.Root,
 		}
+		if execUnit.ResolvedValues != nil {
+			valRef.Resolved = true
+			valRef.Values, valRef.Found = execUnit.ResolvedValues[ref.Expr()]
+		}
+		flow.ValuesReference = append(flow.ValuesReference, valRef)
 	}
 }
 
