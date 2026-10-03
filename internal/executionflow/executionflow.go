@@ -16,6 +16,9 @@ type ValuesReference struct {
 	ExecutionUnit *frame.ExecutionUnit
 	ValuesName    string
 	Values        string
+	// Root is true when the line reads "$.Values.<name>" (the root data) rather
+	// than ".Values.<name>" (the current dot).
+	Root bool
 	// Resolved is true when value resolution ran for this line, so Values (even
 	// when empty) is meaningful.
 	Resolved bool
@@ -39,15 +42,15 @@ func GetValuesReferences(execUnit *frame.ExecutionUnit) []string {
 
 func FillValuesReferences(flow *ExecutionFlow, execUnit *frame.ExecutionUnit) {
 	if ContainsValuesReference(execUnit) {
-		valuesNames := GetValuesReferences(execUnit)
-		for _, valName := range valuesNames {
+		for _, ref := range templatevalues.ParseReferences(execUnit.LineContent) {
 			valRef := &ValuesReference{
 				ExecutionUnit: execUnit,
-				ValuesName:    valName,
+				ValuesName:    ref.Path,
+				Root:          ref.Root,
 			}
 			if execUnit.ResolvedValues != nil {
 				valRef.Resolved = true
-				valRef.Values, valRef.Found = execUnit.ResolvedValues[valName]
+				valRef.Values, valRef.Found = execUnit.ResolvedValues[ref.Expr()]
 			}
 			flow.ValuesReference = append(flow.ValuesReference, valRef)
 		}

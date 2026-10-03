@@ -413,6 +413,93 @@ func TestDebugHelmToolVersionedChart(t *testing.T) {
 	}
 }
 
+// writeRangeChart writes a chart whose range body reads "$.Values.image.tag".
+// Inside the range the dot is the scalar item, so a dot-based lookup cannot
+// reach image.tag; only root resolution can.
+func writeRangeChart(t *testing.T) (root string) {
+	t.Helper()
+	root = t.TempDir()
+	chartDir := filepath.Join(root, "rchart")
+	files := map[string]string{
+		"Chart.yaml":  "apiVersion: v2\nname: rchart\nversion: 1.0.0\n",
+		"values.yaml": "image:\n  tag: v1\nitems:\n  - a\n  - b\n",
+		"templates/deployment.yaml": `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rchart
+data:
+  tag: {{ .Values.image.tag | quote }}
+  {{- range .Values.items }}
+  item-{{ . }}: {{ $.Values.image.tag | quote }}
+  {{- end }}
+`,
+	}
+	for rel, content := range files {
+		path := filepath.Join(chartDir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// TestDebugHelmToolResolvesRootValues checks that "$.Values.x" resolves the
+// root data, not the current dot. Inside a range the two differ, so this is the
+// case that plain ".Values.x" resolution gets wrong.
+func TestDebugHelmToolResolvesRootValues(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+	helmPath := debugHelmBinary()
+	if helmPath == "" {
+		t.Skip("no debug-enabled helm binary; set HELM_DEBUGGER_HELM to enable")
+	}
+	if _, err := exec.LookPath("dlv"); err != nil {
+		t.Skip("dlv not found in PATH")
+	}
+
+	root := writeRangeChart(t)
+	session := connectTestClient(t)
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "debug_helm",
+		Arguments: map[string]any{
+			"chart_path":     "rchart",
+			"working_dir":    root,
+			"helm_path":      helmPath,
+			"values":         []any{"image.tag"},
+			"resolve_values": true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CallTool returned protocol error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected tool error: %s", resultText(t, res))
+	}
+
+	out := decodeDebugOutput(t, res)
+	foundRoot := false
+	for _, site := range out.Sites {
+		value, ok := site.Values["$.Values.image.tag"]
+		if !ok {
+			continue
+		}
+		foundRoot = true
+		if value != `"v1"` {
+			t.Fatalf("$.Values.image.tag resolved to %q, want %q", value, `"v1"`)
+		}
+	}
+	if !foundRoot {
+		t.Fatalf("no site reported a resolved $.Values.image.tag (report:\n%s)", out.Report)
+	}
+	if !strings.Contains(out.Report, `$.Values.image.tag = "v1"`) {
+		t.Fatalf("report does not show the resolved root value:\n%s", out.Report)
+	}
+}
+
 // TestDebugHelmToolResolvesValues is an end-to-end test of resolve_values: the
 // tool must report the value Helm rendered with, not just the option name.
 func TestDebugHelmToolResolvesValues(t *testing.T) {
@@ -449,7 +536,7 @@ func TestDebugHelmToolResolvesValues(t *testing.T) {
 	out := decodeDebugOutput(t, res)
 	found := false
 	for _, site := range out.Sites {
-		value, ok := site.Values["image.tag"]
+		value, ok := site.Values[".Values.image.tag"]
 		if !ok {
 			continue
 		}

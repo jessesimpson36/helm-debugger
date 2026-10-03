@@ -88,7 +88,7 @@ func resolvedFlow() *executionflow.ExecutionFlow {
 		LineNumber:   58,
 		LineContent:  `{{- default (include "chart.fullname" .) .Values.serviceAccount.name }}`,
 		ResolvedValues: map[string]string{
-			"serviceAccount.name": `""`,
+			".Values.serviceAccount.name": `""`,
 		},
 	}
 	flow.Helpers = []*frame.ExecutionUnit{helper}
@@ -132,13 +132,37 @@ func TestLocateIncludesResolvedValues(t *testing.T) {
 	if helperSite == nil {
 		t.Fatalf("expected the helper site, got %+v", located.Sites)
 	}
-	if got := helperSite.Values["serviceAccount.name"]; got != `""` {
-		t.Fatalf("site values = %#v, want serviceAccount.name=%q", helperSite.Values, `""`)
+	if got := helperSite.Values[".Values.serviceAccount.name"]; got != `""` {
+		t.Fatalf("site values = %#v, want .Values.serviceAccount.name=%q", helperSite.Values, `""`)
 	}
 
 	text := LocateText(located, nil)
 	if !strings.Contains(text, `.Values.serviceAccount.name = ""`) {
 		t.Fatalf("locate text missing the resolved value:\n%s", text)
+	}
+}
+
+func TestWriteRendersRootValues(t *testing.T) {
+	helper := &frame.ExecutionUnit{
+		FunctionName: "chart.items",
+		FileName:     "chart/templates/_helpers.tpl",
+		LineNumber:   12,
+		LineContent:  `{{- range .Values.items }}item: {{ $.Values.image.tag }}{{- end }}`,
+	}
+	flow := sampleFlow()
+	flow.ValuesReference = []*executionflow.ValuesReference{
+		{ExecutionUnit: helper, ValuesName: "items", Resolved: true, Found: true, Values: "<[]interface {}>"},
+		{ExecutionUnit: helper, ValuesName: "image.tag", Root: true, Resolved: true, Found: true, Values: `"v1"`},
+	}
+
+	text := Text([]Section{{Name: "EXECUTION FLOWS", Flows: []*executionflow.ExecutionFlow{flow}}})
+	for _, want := range []string{
+		"- items = <[]interface {}>",
+		`- $.Values.image.tag = "v1"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("report missing %q:\n%s", want, text)
+		}
 	}
 }
 

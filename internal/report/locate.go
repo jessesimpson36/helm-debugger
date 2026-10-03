@@ -176,8 +176,8 @@ func LocateText(located Located, suggestions []string) string {
 		if site.Source != "" {
 			fmt.Fprintf(&b, "      %s\n", strings.TrimSpace(site.Source))
 		}
-		for _, name := range sortedValueKeys(site.Values) {
-			fmt.Fprintf(&b, "      .Values.%s = %s\n", name, site.Values[name])
+		for _, expr := range sortedValueKeys(site.Values) {
+			fmt.Fprintf(&b, "      %s = %s\n", expr, site.Values[expr])
 		}
 	}
 	if located.Truncated {

@@ -99,6 +99,6 @@ func resolveValues(f *TemplateFrame, execUnit *frame.ExecutionUnit) {
 	if !templatevalues.Contains(execUnit.LineContent) {
 		return
 	}
-	refs := templatevalues.References(execUnit.LineContent)
+	refs := templatevalues.ParseReferences(execUnit.LineContent)
 	execUnit.ResolvedValues = f.ValueResolver.Resolve(refs)
 }

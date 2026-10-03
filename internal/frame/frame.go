@@ -40,9 +40,9 @@ type ExecutionUnit struct {
 	// SourceError is set when the source line could not be read from disk. The
 	// execution unit is still reported; only LineContent is missing.
 	SourceError string
-	// ResolvedValues maps a .Values path (without the leading ".Values.", for
-	// example "serviceAccount.name") to the value Helm saw at render time. It is
-	// nil unless value resolution was enabled for the run.
+	// ResolvedValues maps a .Values reference expression (".Values.name" or
+	// "$.Values.name") to the value Helm saw at render time. It is nil unless
+	// value resolution was enabled for the run.
 	ResolvedValues map[string]string
 }
 

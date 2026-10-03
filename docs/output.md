@@ -99,8 +99,19 @@ stopping in `text/template`'s walk loop and materializing the current template
 data with a debugger function call, so it reports the merged default + override
 value the template engine saw — not the raw `values.yaml` file.
 
+Both `.Values.x` and `$.Values.x` are resolved, against the current dot and the
+root data respectively. The two differ inside a `range`/`with` block or an
+included helper, so a `$.Values.x` inside a range still resolves to the root
+value:
+
+```text
+Relevant Values
+- $.Values.image.tag = "v1"
+```
+
 In `locate` mode the same information is attached to each source site, both as
-text and in the structured `sites[].values` field.
+text and in the structured `sites[].values` field. Those map keys are the
+template expression (`.Values.image.tag` or `$.Values.image.tag`).
 
 ## Write buffer
 

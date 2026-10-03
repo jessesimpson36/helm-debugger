@@ -49,8 +49,10 @@ chart directory:
   `mode: "full"` for the complete execution flows with rendered write buffers.
 - `resolve_values` also resolves each `.Values.*` option on a matched line to the
   value Helm rendered with, reported per site in `sites[].values` and as
-  `.Values.<option> = <value>` in the text. Strings are quoted, so `""` means an
-  empty value and `<unset>` means the option was absent at render time.
+  `<expr> = <value>` in the text, where `<expr>` is `.Values.x` or `$.Values.x`.
+  Strings are quoted, so `""` means an empty value and `<unset>` means the option
+  was absent at render time. Root (`$.Values.x`) references resolve against the
+  root data even inside a `range`/`with` or an included helper.
 - When a query matches nothing, the response says so and suggests nearby known
   values, helpers, and templates instead of returning a silent empty report.
 
