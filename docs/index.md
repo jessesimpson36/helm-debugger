@@ -86,3 +86,11 @@ See [Understanding output](output.md) for a full walk-through.
     Image tags, SBOMs, and the `install-mcp.sh` helper.
 
 </div>
+
+## Support
+
+If this project is useful to you, consider buying me a coffee:
+
+[Support me on Ko-fi](https://ko-fi.com/jessesimpson36){ .md-button .md-button--primary }
+
+See [Support this project](support.md) for other ways to help.

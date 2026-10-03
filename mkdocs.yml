@@ -18,6 +18,7 @@ theme:
     - navigation.top
     - navigation.sections
     - navigation.indexes
+    - navigation.footer
     - content.code.copy
     - content.code.select
     - content.tabs.link
@@ -49,6 +50,13 @@ nav:
   - Releases and upgrading: releases.md
   - Contributing:
       - Releasing: contributing/releasing.md
+  - Support: support.md
+
+extra:
+  social:
+    - icon: simple/kofi
+      link: https://ko-fi.com/jessesimpson36
+      name: Support me on Ko-fi
 
 markdown_extensions:
   - admonition
