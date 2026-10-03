@@ -13,7 +13,6 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
-	"github.com/jessesimpson36/helm-debugger/internal/templatepath"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -238,29 +237,24 @@ func TestResolveChartFields(t *testing.T) {
 	}
 }
 
-func TestDebugHelmResolvesVersionedChartPaths(t *testing.T) {
+func TestResolveChartFieldsVersionedDir(t *testing.T) {
 	root := t.TempDir()
 	chartDir := filepath.Join(root, "charts", "example-platform-8.9")
-	if err := os.MkdirAll(filepath.Join(chartDir, "templates", "frontend"), 0o755); err != nil {
+	if err := os.MkdirAll(chartDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(chartDir, "Chart.yaml"), []byte("name: example-platform\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	source := filepath.Join(chartDir, "templates", "frontend", "_config.yaml")
-	if err := os.WriteFile(source, []byte("security:\n  username: x\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 
-	// Mirrors what handleDebugHelm does with chart_path.
+	// Mirrors what handleDebugHelm does with chart_path. The chart directory
+	// name (example-platform-8.9) deliberately differs from the Chart.yaml name
+	// (example-platform); ChartDirectory must point at the directory so the
+	// resolver can find the source.
 	chart, workingDir := resolveChartFields("", "charts/example-platform-8.9", root)
-	resolver := templatepath.New(workingDir, chart)
-	got, err := resolver.Resolve("example-platform/templates/frontend/_config.yaml")
-	if err != nil {
-		t.Fatalf("Resolve: %v", err)
-	}
-	if got != source {
-		t.Fatalf("Resolve = %q, want %q", got, source)
+	cfg := &settings.Settings{ChartName: chart, WorkingDir: workingDir}
+	if got := cfg.ChartDirectory(); got != chartDir {
+		t.Fatalf("ChartDirectory() = %q, want %q", got, chartDir)
 	}
 }
 

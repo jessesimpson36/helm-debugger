@@ -4,23 +4,15 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
 )
 
-// ReadOneLine reads a single 1-based line from fileName. When fileName is
-// relative it is resolved against baseDir (which may be empty, meaning the
-// current directory). Callers are responsible for reporting a failure; this
-// function does not write to stderr.
-func ReadOneLine(baseDir, fileName string, lineNumber int) (string, error) {
-	path := fileName
-	if !filepath.IsAbs(path) && baseDir != "" {
-		path = filepath.Join(baseDir, path)
-	}
-
-	file, err := os.Open(path)
+// ReadOneLine reads a single 1-based line from fileName. Callers are
+// responsible for reporting a failure; this function does not write to stderr.
+func ReadOneLine(fileName string, lineNumber int) (string, error) {
+	file, err := os.Open(fileName)
 	if err != nil {
 		return "", err
 	}

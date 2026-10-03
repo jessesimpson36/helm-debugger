@@ -3,6 +3,7 @@ package settings
 import (
 	"flag"
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -87,6 +88,20 @@ func (s *Settings) EffectiveWorkingDir() string {
 		return s.WorkingDir
 	}
 	return "."
+}
+
+// ChartDirectory returns the on-disk path of the chart being debugged. The
+// resolver uses it to map runtime template names (which helm prefixes with the
+// Chart.yaml name) back to source files, including subcharts and .tgz
+// dependencies.
+func (s *Settings) ChartDirectory() string {
+	if s.ChartName == "" {
+		return s.EffectiveWorkingDir()
+	}
+	if filepath.IsAbs(s.ChartName) {
+		return filepath.Clean(s.ChartName)
+	}
+	return filepath.Join(s.EffectiveWorkingDir(), s.ChartName)
 }
 
 // Clone returns a shallow copy of the settings with its slice fields copied.

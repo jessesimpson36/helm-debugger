@@ -2,7 +2,6 @@ package templateframe
 
 import (
 	"fmt"
-	"path/filepath"
 	"strconv"
 
 	"github.com/go-delve/delve/service/api"
@@ -66,13 +65,11 @@ func (f *TemplateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 			return nil, fmt.Errorf("Unknown key in mapper: %s", key)
 		}
 		if execUnit.FunctionName != "" && execUnit.FileName != "" && execUnit.LineNumber != 0 {
-			path, err := f.resolveSourcePath(execUnit.FileName)
+			lineContent, err := display.ResolveAndReadOneLine(f.ChartPath, execUnit.FileName, execUnit.LineNumber)
 			if err != nil {
 				// Keep the execution unit so the flow is still reported; only
-				// the source line is missing. The debugger surfaces SourceError
+				// the source line is missing. debugger.Run surfaces SourceError
 				// as a warning.
-				execUnit.SourceError = err.Error()
-			} else if lineContent, err := display.ReadOneLine("", path, execUnit.LineNumber); err != nil {
 				execUnit.SourceError = err.Error()
 			} else {
 				execUnit.LineContent = lineContent
@@ -86,17 +83,4 @@ func (f *TemplateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 	}
 
 	return bindResult, nil
-}
-
-// resolveSourcePath turns a runtime template name into a filesystem path. When
-// no resolver is configured it treats the name as a path relative to WorkingDir,
-// which preserves the behavior of callers that do not wire one.
-func (f *TemplateFrame) resolveSourcePath(name string) (string, error) {
-	if f.Resolver != nil {
-		return f.Resolver.Resolve(name)
-	}
-	if !filepath.IsAbs(name) && f.WorkingDir != "" {
-		return filepath.Join(f.WorkingDir, name), nil
-	}
-	return name, nil
 }

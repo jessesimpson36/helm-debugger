@@ -73,8 +73,9 @@ back to the chart directory it was pointed at, so the directory and the chart
 name are allowed to differ.
 
 The command still has to point at a local chart folder. Pointing `--chart` at a
-`.tgz` archive or a registry reference is not supported, and helper files from
-dependencies vendored as `.tgz` archives cannot be read from disk. When a
+`.tgz` archive or a registry reference is not supported. Dependencies vendored as
+`.tgz` archives *are* supported: template names inside them are resolved and read
+directly from the archive (as are decompressed subcharts under `charts/`). When a
 template source cannot be resolved the debugger keeps the execution flow and
 emits a warning instead of dropping it. Warnings appear in a `WARNINGS` report
 section and in the `warnings` field of the MCP response, so an empty or partial

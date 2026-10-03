@@ -9,7 +9,6 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
-	"github.com/jessesimpson36/helm-debugger/internal/templatepath"
 )
 
 func Main(cfg *settings.Settings) error {
@@ -26,8 +25,7 @@ func Main(cfg *settings.Settings) error {
 	defer session.Close()
 
 	frame := breakpoints.GetLineStartFrame(lines)
-	frame.WorkingDir = cfg.EffectiveWorkingDir()
-	frame.Resolver = templatepath.New(cfg.EffectiveWorkingDir(), cfg.ChartName)
+	frame.ChartPath = cfg.ChartDirectory()
 	frames := []*delegate.DelegateFrame{frame}
 	if err := session.Configure(frames); err != nil {
 		return err

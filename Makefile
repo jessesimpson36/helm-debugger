@@ -1,5 +1,5 @@
 .PHONY: all build test test-unit test-race test-integration vet fmt clean \
-	clone_helm compile_helm run \
+	clone_helm compile_helm clone_dlv compile_dlv run \
 	test_values_query test_helpers_query test_template_query test_rendered_query test_all_queries \
 	docker-build docker-test docker-run docker-mcp docker-shell docker-push
 
@@ -55,6 +55,12 @@ compile_helm:
 	sed -i 's/LDFLAGS\s*:=.*/LDFLAGS := /' helm/Makefile
 	sed -i 's/GOFLAGS\s*:=.*/GOFLAGS := -gcflags="all=-N -l"/' helm/Makefile
 	cd helm && make
+
+clone_dlv:
+	git clone https://github.com/go-delve/delve
+
+compile_dlv:
+	cd delve && make build
 
 run: test_all_queries
 

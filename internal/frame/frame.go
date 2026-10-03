@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
-	"github.com/jessesimpson36/helm-debugger/internal/templatepath"
 )
 
 // A frame represents a breakpoint and a set of variables you want displayed at that frame
@@ -14,10 +13,10 @@ type Frame struct {
 	Breakpoints []*api.Breakpoint
 	ReqVars     []string
 	Mapper      Mapper
-	WorkingDir  string
-	// Resolver maps runtime Go template names to source files on disk. It may be
-	// nil, in which case names are resolved relative to WorkingDir.
-	Resolver *templatepath.Resolver
+	// ChartPath is the path to the helm chart directory being debugged. It is
+	// used to resolve runtime template names (which helm prefixes with the
+	// Chart.yaml name) back to files on disk.
+	ChartPath string
 }
 
 type RenderedLine struct {
