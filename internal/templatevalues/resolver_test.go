@@ -89,6 +89,30 @@ func TestLookupPath(t *testing.T) {
 	}
 }
 
+func TestParsePointer(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+		ok    bool
+	}{
+		{"unsafe pointer", "unsafe.Pointer(0xc000acc870)", "0xc000acc870", true},
+		{"bare pointer", "0xc000acc870", "0xc000acc870", true},
+		{"decimal pointer", "824645894816", "824645894816", true},
+		{"nil", "unsafe.Pointer(0x0)", "", false},
+		{"empty", "", "", false},
+		{"no address", "nil", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := parsePointer(tt.value)
+			if ok != tt.ok || got != tt.want {
+				t.Fatalf("parsePointer(%q) = (%q,%v), want (%q,%v)", tt.value, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
 func TestFormat(t *testing.T) {
 	tests := []struct {
 		name string

@@ -20,6 +20,34 @@ const (
 // valuesKey is the top-level template data field that holds the merged values.
 const valuesKey = "Values"
 
+// ptrExpr returns the expression that reads the data pointer of a base. Reading
+// a pointer field is a cheap EvalVariable, unlike materializing the data, so it
+// can be used as a cache key before deciding whether a call is needed.
+func ptrExpr(root bool) string {
+	if root {
+		return "s.vars[0].value.ptr"
+	}
+	return "dot.ptr"
+}
+
+// ptrLoadConfig is a deliberately tiny config for reading a pointer field.
+var ptrLoadConfig = api.LoadConfig{MaxStringLen: 64}
+
+// cacheKey identifies a materialized base by its data pointer. The same map
+// reused across a chart's templates (Helm shares one vals map per chart) maps to
+// a single entry.
+type cacheKey struct {
+	root bool
+	ptr  string
+}
+
+// cachedValues is a materialized ".Values" subtree, or a marker that the base
+// had no values.
+type cachedValues struct {
+	values api.Variable
+	found  bool
+}
+
 // loadConfig controls how much of the template data Delve materializes when it
 // returns a materialized Interface() call. It follows pointers and struct
 // fields deeply enough to reach nested values. MaxArrayValues also caps the
@@ -35,10 +63,13 @@ var loadConfig = api.LoadConfig{
 }
 
 // Resolver materializes the template data at a breakpoint and looks up
-// .Values.* paths inside it, against either the current dot or the root.
+// .Values.* paths inside it, against either the current dot or the root. It
+// caches the materialized values per data pointer, so a chart that shares one
+// values map across many templates pays for the materialization once.
 type Resolver struct {
 	client      *rpc2.RPCClient
 	goroutineID int64
+	cache       map[cacheKey]cachedValues
 }
 
 // NewResolver returns a Resolver that evaluates the template data on the given
@@ -48,7 +79,11 @@ func NewResolver(client *rpc2.RPCClient, goroutineID int64) *Resolver {
 	if client != nil {
 		client.SetReturnValuesLoadConfig(&loadConfig)
 	}
-	return &Resolver{client: client, goroutineID: goroutineID}
+	return &Resolver{
+		client:      client,
+		goroutineID: goroutineID,
+		cache:       map[cacheKey]cachedValues{},
+	}
 }
 
 // Resolve materializes the template data once per base and returns a display
@@ -62,38 +97,86 @@ func (r *Resolver) Resolve(refs []Reference) map[string]string {
 		return resolved
 	}
 
-	// dot and the root may differ (inside range/with/include), so materialize
-	// each base at most once per call.
-	var (
-		dotValues, rootValues api.Variable
-		dotOK, rootOK         bool
-		dotDone, rootDone     bool
-	)
-	valuesFor := func(root bool) (api.Variable, bool) {
-		if root {
-			if !rootDone {
-				rootDone = true
-				rootValues, rootOK = r.materializeValues(rootExpr)
-			}
-			return rootValues, rootOK
-		}
-		if !dotDone {
-			dotDone = true
-			dotValues, dotOK = r.materializeValues(dotExpr)
-		}
-		return dotValues, dotOK
+	need := map[bool]bool{}
+	for _, ref := range refs {
+		need[ref.Root] = true
+	}
+
+	values := map[bool]api.Variable{}
+	found := map[bool]bool{}
+	for root := range need {
+		v, ok := r.valuesFor(root)
+		values[root], found[root] = v, ok
 	}
 
 	for _, ref := range refs {
-		values, ok := valuesFor(ref.Root)
-		if !ok {
+		if !found[ref.Root] {
 			continue
 		}
-		if value, ok := lookupPath(values, ref.Path); ok {
+		if value, ok := lookupPath(values[ref.Root], ref.Path); ok {
 			resolved[ref.Expr()] = Format(value)
 		}
 	}
 	return resolved
+}
+
+// valuesFor returns the ".Values" entry of a base, materializing and caching it
+// on first use. The cache is keyed by the data pointer, which is read with a
+// cheap EvalVariable before any call, so repeat lines against the same map are
+// free.
+func (r *Resolver) valuesFor(root bool) (api.Variable, bool) {
+	key, keyed := r.cacheKey(root)
+	if keyed {
+		if cached, hit := r.cache[key]; hit {
+			return cached.values, cached.found
+		}
+	}
+
+	values, found := r.materializeValues(baseExpr(root))
+	if keyed {
+		r.cache[key] = cachedValues{values: values, found: found}
+	}
+	return values, found
+}
+
+// cacheKey reads the base's data pointer without materializing the data. The
+// second result is false when the pointer could not be read, in which case the
+// caller simply skips the cache.
+func (r *Resolver) cacheKey(root bool) (cacheKey, bool) {
+	v, err := r.client.EvalVariable(
+		api.EvalScope{GoroutineID: r.goroutineID, Frame: 0}, ptrExpr(root), ptrLoadConfig)
+	if err != nil || v == nil {
+		return cacheKey{}, false
+	}
+	ptr, ok := parsePointer(v.Value)
+	if !ok {
+		return cacheKey{}, false
+	}
+	return cacheKey{root: root, ptr: ptr}, true
+}
+
+// parsePointer extracts a non-nil address from a Delve pointer value. Delve
+// renders unsafe pointers as decimal ("824645894816") or, when formatted
+// explicitly, hexadecimal ("unsafe.Pointer(0xc000acc870)"); either spelling is
+// an acceptable cache key as long as it is stable.
+func parsePointer(value string) (string, bool) {
+	v := strings.TrimSpace(value)
+	v = strings.TrimPrefix(v, "unsafe.Pointer(")
+	v = strings.TrimSuffix(v, ")")
+	v = strings.TrimSpace(v)
+	switch v {
+	case "", "0", "0x0", "nil", "<nil>":
+		return "", false
+	}
+	return v, true
+}
+
+// baseExpr returns the Delve expression that yields the template data for a base.
+func baseExpr(root bool) string {
+	if root {
+		return rootExpr
+	}
+	return dotExpr
 }
 
 // materializeValues evaluates expr (which must yield the template data) and
