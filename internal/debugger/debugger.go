@@ -18,7 +18,6 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
-	"github.com/jessesimpson36/helm-debugger/internal/templatevalues"
 )
 
 // maxSourceWarnings caps how many distinct source-resolution warnings are
@@ -73,15 +72,29 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 	for _, f := range frames {
 		f.ChartPath = cfg.ChartDirectory()
 	}
-	if cfg.ResolveValues {
-		// Only the line frame reads template source, so only it resolves
-		// .Values references.
-		frames[0].ResolveValues = true
-		frames[0].ValueResolver = templatevalues.NewResolver(session.Client, 1)
-	}
 
 	if err := session.Configure(frames); err != nil {
 		return nil, err
+	}
+
+	// Value resolution on this branch captures the value at the point the
+	// template engine computed it (evalField's map return) instead of
+	// materializing the whole template data at every walk node.
+	var capturer *fieldCapturer
+	if cfg.ResolveValues {
+		bp := &api.Breakpoint{
+			Name: evalFieldBreakpointName,
+			File: "text/template/exec.go",
+			Line: lines.EvalFieldReturn,
+			Cond: evalFieldCond,
+		}
+		if _, err := session.Client.CreateBreakpoint(bp); err != nil {
+			if log != nil {
+				fmt.Fprintf(log, "warning: value capture disabled: %v\n", err)
+			}
+		} else {
+			capturer = newFieldCapturer(session.Client)
+		}
 	}
 
 	if _, err := session.Client.Restart(false); err != nil {
@@ -94,6 +107,7 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 	}
 
 	var events []*frame.BindResult
+	var captures []*fieldCapture
 	for {
 		if state == nil || state.Exited {
 			break
@@ -104,6 +118,17 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 			if err != nil {
 				return nil, fmt.Errorf("reading debugger state: %w", err)
 			}
+			continue
+		}
+
+		if capturer != nil && breakpointName(state) == evalFieldBreakpointName {
+			capture, captureErr := capturer.Capture(session.Client)
+			if captureErr != nil {
+				// A failed capture is not fatal; keep the rest of the run.
+			} else if capture != nil {
+				captures = append(captures, capture)
+			}
+			state = <-session.Client.Continue()
 			continue
 		}
 
@@ -125,11 +150,24 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 		state = <-session.Client.Continue()
 	}
 
+	if len(captures) > 0 {
+		attachFieldCaptures(events, captures)
+	}
+
 	return &Result{
 		Flows:       breakpointevent.Process(events),
 		LineNumbers: lines,
 		Warnings:    collectSourceWarnings(events),
 	}, nil
+}
+
+// breakpointName returns the name of the breakpoint the debugger is stopped at,
+// or "" when it is not stopped at a named breakpoint.
+func breakpointName(state *api.DebuggerState) string {
+	if state == nil || state.CurrentThread == nil || state.CurrentThread.Breakpoint == nil {
+		return ""
+	}
+	return state.CurrentThread.Breakpoint.Name
 }
 
 // collectSourceWarnings reports, once per template name, the sources that could

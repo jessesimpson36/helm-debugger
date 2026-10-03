@@ -139,6 +139,7 @@ type debugHelmInput struct {
 type breakpointLines struct {
 	LineStart        int `json:"line_start" jsonschema:"(*state).walk line start"`
 	RenderedManifest int `json:"rendered_manifest" jsonschema:"rendered manifest write line"`
+	EvalFieldReturn  int `json:"eval_field_return,omitempty" jsonschema:"(*state).evalField map return line"`
 }
 
 type debugHelmOutput struct {
@@ -204,6 +205,7 @@ func summarize(result *debugger.Result, cfg *settings.Settings, mode string) deb
 		LineNumbers: breakpointLines{
 			LineStart:        lines.LineStart,
 			RenderedManifest: lines.RenderedManifest,
+			EvalFieldReturn:  lines.EvalFieldReturn,
 		},
 	}
 
@@ -352,6 +354,7 @@ func toBreakpointLines(lines breakpoints.LineNumbers) breakpointLines {
 	return breakpointLines{
 		LineStart:        lines.LineStart,
 		RenderedManifest: lines.RenderedManifest,
+		EvalFieldReturn:  lines.EvalFieldReturn,
 	}
 }
 

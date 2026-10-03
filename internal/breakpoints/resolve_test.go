@@ -54,6 +54,17 @@ func (s *state) walkIfOrWith(typ parse.NodeType, dot reflect.Value, pipe *parse.
 		s.walk(dot, elseList)
 	}
 }
+
+func (s *state) evalField(dot reflect.Value, fieldName string, node parse.Node, args []parse.Node, final, receiver reflect.Value) reflect.Value {
+	switch receiver.Kind() {
+	case reflect.Struct:
+		return field
+	case reflect.Map:
+		result := receiver.MapIndex(nameVal)
+		return result
+	}
+	return zero
+}
 `
 	dir := t.TempDir()
 	path := filepath.Join(dir, "exec.go")
@@ -69,6 +80,7 @@ func (s *state) walkIfOrWith(typ parse.NodeType, dot reflect.Value, pipe *parse.
 	want := LineNumbers{
 		LineStart:        findLine(t, fixture, "func (s *state) walk(dot") + 1, // s.at(node) on next line
 		RenderedManifest: findLine(t, fixture, "s.wr.Write(node.Text)"),
+		EvalFieldReturn:  findLine(t, fixture, "return result"),
 	}
 	if got != want {
 		t.Fatalf("resolveFile = %+v, want %+v", got, want)
@@ -105,7 +117,7 @@ func TestResolveFromRuntimeGOROOT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve(%s): %v", goroot, err)
 	}
-	if lines.LineStart == 0 || lines.RenderedManifest == 0 {
+	if lines.LineStart == 0 || lines.RenderedManifest == 0 || lines.EvalFieldReturn == 0 {
 		t.Fatalf("incomplete line numbers: %+v", lines)
 	}
 	// The walk breakpoint lines must be ordered and inside the file.

@@ -25,6 +25,11 @@ type LineNumbers struct {
 	// RenderedManifest is the statement in (*state).walk that writes a text node
 	// to the output buffer, used to snapshot the rendered manifest.
 	RenderedManifest int
+	// EvalFieldReturn is the map-case `return result` in (*state).evalField. A
+	// breakpoint there sees the just-resolved field value in the `result` local,
+	// which lets the debugger capture a value at the point the template engine
+	// computed it instead of materializing the whole template data.
+	EvalFieldReturn int
 }
 
 // FallbackLines are the line numbers for the Go 1.25.x/1.26.x standard library
@@ -33,6 +38,7 @@ type LineNumbers struct {
 var FallbackLines = LineNumbers{
 	LineStart:        262,
 	RenderedManifest: 287,
+	EvalFieldReturn:  744,
 }
 
 // DefaultGOROOT returns the GOROOT to resolve standard library sources from.
@@ -93,10 +99,12 @@ func resolveFile(path string) (LineNumbers, error) {
 	defer f.Close()
 
 	var (
-		result  LineNumbers
-		scanner = bufio.NewScanner(f)
-		lineNo  int
-		inWalk  bool
+		result     LineNumbers
+		scanner    = bufio.NewScanner(f)
+		lineNo     int
+		inWalk     bool
+		inEvalFld  bool
+		sawMapCase bool
 	)
 
 	for scanner.Scan() {
@@ -104,13 +112,20 @@ func resolveFile(path string) (LineNumbers, error) {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
-		// Track which function body we are in. Only (*state).walk is relevant;
-		// the leading "func " case resets the flag for every other function.
+		// Track which function body we are in. Only (*state).walk and
+		// (*state).evalField are relevant; the leading "func " case resets the
+		// flags for every other function.
 		switch {
 		case strings.HasPrefix(trimmed, "func (s *state) walk("):
 			inWalk = true
+			inEvalFld = false
+		case strings.HasPrefix(trimmed, "func (s *state) evalField("):
+			inEvalFld = true
+			inWalk = false
+			sawMapCase = false
 		case strings.HasPrefix(trimmed, "func "):
 			inWalk = false
+			inEvalFld = false
 		}
 
 		if inWalk {
@@ -119,6 +134,14 @@ func resolveFile(path string) (LineNumbers, error) {
 			}
 			if result.RenderedManifest == 0 && strings.Contains(trimmed, "s.wr.Write(node.Text)") {
 				result.RenderedManifest = lineNo
+			}
+		}
+		if inEvalFld {
+			if trimmed == "case reflect.Map:" {
+				sawMapCase = true
+			}
+			if sawMapCase && result.EvalFieldReturn == 0 && trimmed == "return result" {
+				result.EvalFieldReturn = lineNo
 			}
 		}
 	}
@@ -132,6 +155,9 @@ func resolveFile(path string) (LineNumbers, error) {
 	}
 	if result.RenderedManifest == 0 {
 		missing = append(missing, "rendered manifest (s.wr.Write)")
+	}
+	if result.EvalFieldReturn == 0 {
+		missing = append(missing, "evalField map return (return result)")
 	}
 	if len(missing) > 0 {
 		return LineNumbers{}, fmt.Errorf("could not find %s in %s", strings.Join(missing, ", "), path)
