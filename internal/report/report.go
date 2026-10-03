@@ -45,7 +45,7 @@ func Sections(flows []*executionflow.ExecutionFlow, cfg *settings.Settings) []Se
 	if len(cfg.RenderedQueryFiles) > 0 {
 		sections = append(sections, Section{
 			Name:  "RENDERED QUERY",
-			Flows: query.QueryRenderedTemplate(flows, cfg.RenderedQueryFiles),
+			Flows: query.QueryRendered(flows, cfg.RenderedQueryFiles),
 		})
 	}
 	if len(sections) == 0 {
@@ -64,6 +64,9 @@ func Write(w io.Writer, sections []Section) {
 // WriteSection renders one section to w.
 func WriteSection(w io.Writer, section Section) {
 	fmt.Fprintf(w, "================= %s =================\n", section.Name)
+	if len(section.Flows) == 0 {
+		fmt.Fprintln(w, "  (no flows matched this query)")
+	}
 	for _, flow := range section.Flows {
 		writeFlow(w, flow)
 	}
@@ -73,6 +76,21 @@ func WriteSection(w io.Writer, section Section) {
 func Text(sections []Section) string {
 	var b strings.Builder
 	Write(&b, sections)
+	return b.String()
+}
+
+// WarningsText renders source-resolution warnings as a section. It returns an
+// empty string when there are none, so callers can concatenate it
+// unconditionally.
+func WarningsText(warnings []string) string {
+	if len(warnings) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintln(&b, "================= WARNINGS =================")
+	for _, warning := range warnings {
+		fmt.Fprintf(&b, "- %s\n", warning)
+	}
 	return b.String()
 }
 

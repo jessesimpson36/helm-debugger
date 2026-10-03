@@ -65,7 +65,20 @@ Helm often discards their debug symbols, which I think I need to be able to hit 
 
 ### Helm chart names vs paths
 
-One of the things I haven't quite worked out yet is if you have a helm chart that is named something different from the folder it lives in, then it can be hard to do things like read lines from the template files that are being executed. Also, if you run the `helm template` command giving a tgz file or a path to a registry, I'm not sure that will work yet. It has to be a local folder named the same as the name of the chart.
+Helm names templates after the chart's `Chart.yaml` name, not after the
+directory the chart lives in. For a chart in a versioned directory (for example
+`example-platform-8.9/` for chart name `example-platform`) the names reported at
+runtime are `example-platform/templates/...`. The debugger resolves those names
+back to the chart directory it was pointed at, so the directory and the chart
+name are allowed to differ.
+
+The command still has to point at a local chart folder. Pointing `--chart` at a
+`.tgz` archive or a registry reference is not supported, and helper files from
+dependencies vendored as `.tgz` archives cannot be read from disk. When a
+template source cannot be resolved the debugger keeps the execution flow and
+emits a warning instead of dropping it. Warnings appear in a `WARNINGS` report
+section and in the `warnings` field of the MCP response, so an empty or partial
+flow set explains itself.
 
 ### Modes
 - **model**: This mode builds a complete data structure representing all execution flows within the chart templates and helpers. Then allows you to query which execution flows you want to follow.
@@ -176,14 +189,20 @@ examples on how to work with the arguments.
 ## MCP server
 
 `--mode mcp` starts a [Model Context Protocol](https://modelcontextprotocol.io/)
-server over stdio. This lets AI coding tools verify what a chart renders and
-why, at runtime, instead of guessing. It exposes three tools:
+server over stdio. It lets AI coding tools reproduce what a chart renders and
+then find *which template line* produced it, instead of grepping templates by
+hand or guessing. It exposes three tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `helm_template` | Render a chart with `helm template` (fast sanity check). |
-| `debug_helm` | Run the chart under delve and report template/helper execution flows, relevant values, and the rendered buffer. |
+| `helm_template` | Reproduce: render a chart with `helm template` to see the actual (possibly wrong) output. |
+| `debug_helm` | Locate: find the template/helper `file:line` behind a value or rendered line, before editing. |
 | `resolve_breakpoints` | Report the resolved `text/template/exec.go` line numbers, useful when debugging the debugger. |
+
+Use `debug_helm` while reproducing a problem and *before* editing a template,
+`_helpers.tpl`, or `values.yaml` — not only at the end to validate a fix. The
+MCP server advertises the same workflow in its `instructions`, so clients that
+surface server instructions get the guidance without any per-repository config.
 
 ### opencode
 
@@ -207,9 +226,25 @@ chart directory:
   "values": ["image.tag"],
   "helpers": ["test.serviceAccountName"],
   "templates": ["test/templates/deployment.yaml:42"],
-  "rendered": ["test/templates/deployment.yaml:32"]
+  "rendered": ["test/templates/deployment.yaml:32"],
+  "mode": "locate"
 }
 ```
+
+- `values` answers "why isn't this option taking effect?" with the exact
+  template/helper `file:line` that reads it. The read sites are returned first
+  and unrelated helper frames are omitted, so a broad flow does not bury the
+  line you need to change.
+- `rendered` is the "I see this wrong output — where does it come from?"
+  selector. A `file:line` value matches the source that wrote that rendered
+  line; any other string is treated as a **substring of the rendered output**, so
+  you can paste the bad line (for example `username: ""`) without knowing the
+  source file.
+- `mode` defaults to `locate`, which returns compact source sites and referenced
+  values as both text and structured fields (`sites`, `relevant_values`). Set
+  `mode: "full"` for the complete execution flows with rendered write buffers.
+- When a query matches nothing, the response says so and suggests nearby known
+  values, helpers, and templates instead of returning a silent empty report.
 
 Chart paths are relative to `/workspace` (the mounted repository). If you run
 the server outside Docker, use the local binary instead:

@@ -13,11 +13,20 @@ value not being applied?" / "why does this render like this?" — use the
 
 Workflow:
 
-1. Call `helm_template` first to see the actual rendered manifests.
-2. Call `debug_helm` to trace the execution flow, passing the relevant filters
-   (`values`, `helpers`, `templates`, `rendered`). For a question about a
-   specific option, pass it as a `values` filter (for example
-   `values: ["image.tag"]`).
+1. Call `helm_template` first to reproduce the published output.
+2. Call `debug_helm` to locate the source. Do this while reproducing a problem
+   and *before* editing templates, `_helpers.tpl`, or `values.yaml`, not only at
+   the end to validate a fix:
+   - For a value that is not taking effect, pass it as a `values` filter (for
+     example `values: ["image.tag"]`). The compact default (`mode: "locate"`)
+     returns the exact template/helper `file:line` that reads it.
+   - To trace a wrong rendered line back to its source, pass a snippet of that
+     line as a `rendered` filter (for example `rendered: ["username: \"\""]`).
+     A non-`file:line` selector is matched as a substring of the rendered output.
+   - Re-run after editing to confirm the flow changed. Use `mode: "full"` when
+     you need the complete execution flows and rendered write buffers.
+   - If a query matches nothing, read the `suggestions` field and retry rather
+     than assuming the tool is broken.
 3. Point at the chart with `chart_path` (for example `chart_path: "test"`), or
    with `chart` + `working_dir`.
 4. Answer from the tool output, quoting the relevant flow and rendered lines.

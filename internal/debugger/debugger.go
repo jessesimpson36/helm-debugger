@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/go-delve/delve/service/api"
@@ -17,7 +18,13 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/jessesimpson36/helm-debugger/internal/frame/delegate"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
+	"github.com/jessesimpson36/helm-debugger/internal/templatepath"
 )
+
+// maxSourceWarnings caps how many distinct source-resolution warnings are
+// reported, so a chart with many vendored or packaged templates does not flood
+// the report.
+const maxSourceWarnings = 10
 
 // Result is the outcome of a single debug run.
 type Result struct {
@@ -26,6 +33,9 @@ type Result struct {
 	Flows []*executionflow.ExecutionFlow
 	// LineNumbers are the resolved text/template breakpoint locations.
 	LineNumbers breakpoints.LineNumbers
+	// Warnings describe template sources that could not be resolved to files.
+	// They explain a partial or empty flow set.
+	Warnings []string
 }
 
 // Run debugs the helm chart described by cfg and returns every captured
@@ -60,8 +70,10 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 		breakpoints.GetLineStartFrame(lines),
 		breakpoints.GetRenderedManifestFrame(lines),
 	}
+	resolver := templatepath.New(cfg.EffectiveWorkingDir(), cfg.ChartName)
 	for _, f := range frames {
 		f.WorkingDir = cfg.EffectiveWorkingDir()
+		f.Resolver = resolver
 	}
 
 	if err := session.Configure(frames); err != nil {
@@ -112,7 +124,44 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 	return &Result{
 		Flows:       breakpointevent.Process(events),
 		LineNumbers: lines,
+		Warnings:    collectSourceWarnings(events),
 	}, nil
+}
+
+// collectSourceWarnings reports, once per template name, the sources that could
+// not be resolved to a file during the run. The execution flows are still
+// returned; the warnings explain any missing line content or empty flow set.
+func collectSourceWarnings(events []*frame.BindResult) []string {
+	reasons := map[string]string{}
+	for _, event := range events {
+		if event == nil || event.ExecutionUnit == nil || event.ExecutionUnit.SourceError == "" {
+			continue
+		}
+		unit := event.ExecutionUnit
+		if _, seen := reasons[unit.FileName]; !seen {
+			reasons[unit.FileName] = unit.SourceError
+		}
+	}
+	if len(reasons) == 0 {
+		return nil
+	}
+
+	files := make([]string, 0, len(reasons))
+	for file := range reasons {
+		files = append(files, file)
+	}
+	sort.Strings(files)
+
+	var warnings []string
+	for i, file := range files {
+		if i == maxSourceWarnings {
+			warnings = append(warnings, fmt.Sprintf(
+				"... and %d more template sources could not be resolved", len(files)-maxSourceWarnings))
+			break
+		}
+		warnings = append(warnings, fmt.Sprintf("%s: %s", file, reasons[file]))
+	}
+	return warnings
 }
 
 // frameForBreakpoint returns the frame whose breakpoint the debugger is

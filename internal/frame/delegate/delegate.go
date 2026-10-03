@@ -30,6 +30,7 @@ func (d *DelegateFrame) Gather(client *rpc2.RPCClient) (map[string]string, error
 		ReqVars:     d.ReqVars,
 		Mapper:      d.Mapper,
 		WorkingDir:  d.WorkingDir,
+		Resolver:    d.Resolver,
 	}
 	frameType := GetFrameType(dFrame)
 	switch frameType {
@@ -39,6 +40,7 @@ func (d *DelegateFrame) Gather(client *rpc2.RPCClient) (map[string]string, error
 			ReqVars:     d.ReqVars,
 			Mapper:      d.Mapper,
 			WorkingDir:  d.WorkingDir,
+			Resolver:    d.Resolver,
 		}
 		return tFrame.Gather(client)
 	case "rendered":
@@ -47,6 +49,7 @@ func (d *DelegateFrame) Gather(client *rpc2.RPCClient) (map[string]string, error
 			ReqVars:     d.ReqVars,
 			Mapper:      d.Mapper,
 			WorkingDir:  d.WorkingDir,
+			Resolver:    d.Resolver,
 		}
 		return rmFrame.Gather(client)
 	default:
@@ -60,6 +63,7 @@ func (d *DelegateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 		ReqVars:     d.ReqVars,
 		Mapper:      d.Mapper,
 		WorkingDir:  d.WorkingDir,
+		Resolver:    d.Resolver,
 	}
 	frameType := GetFrameType(dFrame)
 	switch frameType {
@@ -69,6 +73,7 @@ func (d *DelegateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 			ReqVars:     d.ReqVars,
 			Mapper:      d.Mapper,
 			WorkingDir:  d.WorkingDir,
+			Resolver:    d.Resolver,
 		}
 		return tFrame.Bind(respVars)
 	case "rendered":
@@ -77,6 +82,7 @@ func (d *DelegateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 			ReqVars:     d.ReqVars,
 			Mapper:      d.Mapper,
 			WorkingDir:  d.WorkingDir,
+			Resolver:    d.Resolver,
 		}
 		return rmFrame.Bind(respVars)
 	default:

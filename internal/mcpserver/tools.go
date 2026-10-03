@@ -7,30 +7,45 @@ import (
 	"log"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/jessesimpson36/helm-debugger/internal/breakpoints"
 	"github.com/jessesimpson36/helm-debugger/internal/debugger"
+	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
+	"github.com/jessesimpson36/helm-debugger/internal/query"
 	"github.com/jessesimpson36/helm-debugger/internal/report"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
+)
+
+// Report modes accepted by debug_helm.
+const (
+	modeLocate = "locate"
+	modeFull   = "full"
 )
 
 func registerTools(server *mcp.Server, logger *log.Logger) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "helm_template",
 		Description: "Render a Helm chart with `helm template` and return the rendered manifests. " +
-			"Use this for a quick, non-debugging verification of what a chart produces.",
+			"Use this to reproduce wrong or surprising output; then pass the offending value path " +
+			"or a snippet of the rendered output to `debug_helm` to find the template line that produced it.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input helmTemplateInput) (*mcp.CallToolResult, helmTemplateOutput, error) {
 		return handleHelmTemplate(ctx, input)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "debug_helm",
-		Description: "Debug a Helm chart with delve and return the template/helper execution flows behind the " +
-			"rendered manifests, including the values.yaml options involved. Requires a helm binary built with " +
-			"debug symbols (the bundled Docker image provides one).",
+		Description: "Find where a Helm value or a rendered line comes from. Use this while REPRODUCING a " +
+			"render problem and BEFORE editing templates, _helpers.tpl, or values.yaml: pass `values` for " +
+			"an option that is not taking effect to get the exact template/helper file:line that reads it, " +
+			"or pass `rendered` with a snippet of the wrong output to find the template that wrote it. " +
+			"Re-run after editing to confirm the flow changed. Returns compact source sites by default; " +
+			"set mode=\"full\" for complete execution flows and rendered write buffers. Requires a helm " +
+			"binary built with debug symbols (the bundled Docker image provides one).",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input debugHelmInput) (*mcp.CallToolResult, debugHelmOutput, error) {
 		return handleDebugHelm(ctx, input, logger)
 	})
@@ -109,12 +124,13 @@ type debugHelmInput struct {
 	Values         []string `json:"values,omitempty" jsonschema:"values.yaml option paths to filter execution flows by, e.g. image.tag"`
 	Helpers        []string `json:"helpers,omitempty" jsonschema:"helper/template names to filter by, e.g. mychart.fullname"`
 	Templates      []string `json:"templates,omitempty" jsonschema:"template file:line filters, e.g. mychart/templates/deployment.yaml:42"`
-	Rendered       []string `json:"rendered,omitempty" jsonschema:"rendered manifest file:line filters"`
+	Rendered       []string `json:"rendered,omitempty" jsonschema:"rendered output selectors: a file:line source selector, or any other string treated as a substring of the rendered output (e.g. a snippet of the wrong output)"`
 	HelmPath       string   `json:"helm_path,omitempty" jsonschema:"path to the debug-enabled helm binary"`
 	GoRoot         string   `json:"goroot,omitempty" jsonschema:"GOROOT whose text/template source should be used for breakpoints"`
 	WorkingDir     string   `json:"working_dir,omitempty" jsonschema:"directory chart paths are relative to"`
 	DebugPort      int      `json:"debug_port,omitempty" jsonschema:"port for the headless delve server; 0 picks a free port"`
 	TimeoutSeconds int      `json:"timeout_seconds,omitempty" jsonschema:"maximum seconds to wait for the debug run"`
+	Mode           string   `json:"mode,omitempty" jsonschema:"locate (default) returns compact source sites for the query; full returns complete execution flows with rendered write buffers"`
 }
 
 type breakpointLines struct {
@@ -126,11 +142,16 @@ type breakpointLines struct {
 }
 
 type debugHelmOutput struct {
-	Report       string          `json:"report" jsonschema:"human-readable execution flow report"`
-	FlowCount    int             `json:"flow_count" jsonschema:"number of execution flows captured"`
-	SectionCount int             `json:"section_count" jsonschema:"number of report sections"`
-	LineNumbers  breakpointLines `json:"line_numbers" jsonschema:"resolved text/template breakpoint lines"`
-	SectionNames []string        `json:"section_names" jsonschema:"names of the report sections"`
+	Mode           string          `json:"mode" jsonschema:"report mode used: locate or full"`
+	Report         string          `json:"report" jsonschema:"human-readable execution flow report"`
+	FlowCount      int             `json:"flow_count" jsonschema:"number of execution flows captured"`
+	SectionCount   int             `json:"section_count" jsonschema:"number of report sections"`
+	LineNumbers    breakpointLines `json:"line_numbers" jsonschema:"resolved text/template breakpoint lines"`
+	SectionNames   []string        `json:"section_names" jsonschema:"names of the report sections"`
+	Sites          []report.Site   `json:"sites,omitempty" jsonschema:"template/helper source locations behind the matched flows (locate mode)"`
+	RelevantValues []string        `json:"relevant_values,omitempty" jsonschema:"values.yaml options referenced by the matched flows"`
+	Suggestions    []string        `json:"suggestions,omitempty" jsonschema:"when a query matches nothing: nearest known value/helper/template names to retry with"`
+	Warnings       []string        `json:"warnings,omitempty" jsonschema:"template sources that could not be resolved to files; explains an empty or partial flow set"`
 }
 
 func handleDebugHelm(ctx context.Context, input debugHelmInput, logger *log.Logger) (*mcp.CallToolResult, debugHelmOutput, error) {
@@ -162,14 +183,23 @@ func handleDebugHelm(ctx context.Context, input debugHelmInput, logger *log.Logg
 		return nil, debugHelmOutput{}, err
 	}
 
-	sections := report.Sections(result.Flows, cfg)
-	text := report.Text(sections)
+	out := summarize(result, cfg, input.Mode)
+	return textResult(out.Report), out, nil
+}
 
+// summarize turns a debug run into the MCP response. mode=locate (the default)
+// returns compact source sites so the caller can cheaply answer "where is this
+// value read / what writes this output" before editing; mode=full returns the
+// complete execution flows with rendered write buffers.
+func summarize(result *debugger.Result, cfg *settings.Settings, mode string) debugHelmOutput {
+	if mode != modeFull {
+		mode = modeLocate
+	}
 	lines := result.LineNumbers
 	out := debugHelmOutput{
-		Report:       text,
-		FlowCount:    len(result.Flows),
-		SectionCount: len(sections),
+		Mode:      mode,
+		FlowCount: len(result.Flows),
+		Warnings:  result.Warnings,
 		LineNumbers: breakpointLines{
 			LineStart:        lines.LineStart,
 			RenderedManifest: lines.RenderedManifest,
@@ -178,11 +208,106 @@ func handleDebugHelm(ctx context.Context, input debugHelmInput, logger *log.Logg
 			ConditionalFalse: lines.ConditionalFalse,
 		},
 	}
-	for _, section := range sections {
-		out.SectionNames = append(out.SectionNames, section.Name)
+
+	if mode == modeFull {
+		sections := report.Sections(result.Flows, cfg)
+		out.SectionCount = len(sections)
+		out.SectionNames = sectionNames(sections)
+		out.Report = report.WarningsText(result.Warnings) + report.Text(sections)
+		return out
 	}
 
-	return textResult(text), out, nil
+	located := report.Locate(result.Flows, cfg)
+	out.SectionCount = len(located.Sections)
+	out.SectionNames = sectionNames(located.Sections)
+	out.Sites = located.Sites
+	out.RelevantValues = located.RelevantValues
+	// A query that matches nothing is the easy case to get silently wrong; say
+	// so and suggest nearby names instead of returning an empty report.
+	if len(located.Sites) == 0 && hasQuery(cfg) {
+		out.Suggestions = suggestions(result.Flows, cfg)
+	}
+	out.Report = report.WarningsText(result.Warnings) + report.LocateText(located, out.Suggestions)
+	return out
+}
+
+func sectionNames(sections []report.Section) []string {
+	if len(sections) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(sections))
+	for _, section := range sections {
+		names = append(names, section.Name)
+	}
+	return names
+}
+
+func hasQuery(cfg *settings.Settings) bool {
+	if cfg == nil {
+		return false
+	}
+	return len(cfg.ValuesQuery) > 0 || len(cfg.HelpersQueryFiles) > 0 ||
+		len(cfg.TemplateQueryFiles) > 0 || len(cfg.RenderedQueryFiles) > 0
+}
+
+// suggestions returns "did you mean" hints for a query that matched nothing. It
+// matches the query terms against every value, helper, and template the chart
+// actually reads.
+func suggestions(flows []*executionflow.ExecutionFlow, cfg *settings.Settings) []string {
+	terms := collectTerms(cfg)
+	if len(terms) == 0 {
+		return nil
+	}
+	var out []string
+	out = append(out, matchTerms(terms, query.KnownValueNames(flows), "values")...)
+	out = append(out, matchTerms(terms, query.KnownHelperNames(flows), "helper")...)
+	out = append(out, matchTerms(terms, query.KnownTemplateFiles(flows), "template")...)
+	out = dedupeStrings(out)
+	if len(out) == 0 {
+		out = append(out, "no similar values.yaml options, helpers, or templates are read by this chart; check the chart name, extra_args, and the query")
+	}
+	return out
+}
+
+func collectTerms(cfg *settings.Settings) []string {
+	if cfg == nil {
+		return nil
+	}
+	var terms []string
+	terms = append(terms, cfg.ValuesQuery...)
+	terms = append(terms, cfg.HelpersQueryFiles...)
+	terms = append(terms, cfg.TemplateQueryFiles...)
+	return terms
+}
+
+func matchTerms(terms, known []string, kind string) []string {
+	var out []string
+	for _, term := range terms {
+		lower := strings.ToLower(strings.TrimSpace(term))
+		if lower == "" {
+			continue
+		}
+		for _, name := range known {
+			if strings.Contains(strings.ToLower(name), lower) {
+				out = append(out, fmt.Sprintf("%s: %s", kind, name))
+			}
+		}
+	}
+	return out
+}
+
+func dedupeStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
 }
 
 type resolveBreakpointsInput struct {

@@ -45,16 +45,22 @@ func NewServer(logger *log.Logger) *mcp.Server {
 
 const instructions = `Helm debugger MCP server.
 
-Use this server when you need to verify what a Helm chart actually renders or
-why a helper template produced a particular value.
+Use this server whenever a task involves a Helm chart's rendered output or how a
+values.yaml option flows through helpers into the manifests. Do not speculate
+about what Helm renders, and do not grep templates by hand to find a value: ask
+the tools.
 
-Tools:
-- helm_template: render a chart with the helm CLI (fast sanity check).
-- debug_helm: run the chart under a delve debugger and report the template and
-  helper execution flows that produced each rendered manifest, including the
-  values.yaml options involved.
-- resolve_breakpoints: report the Go standard library line numbers the debugger
-  will use, which is useful when debugging the debugger itself.
+When to use which tool:
+- helm_template: reproduce. Call it first to see exactly what the chart renders,
+  including wrong or surprising output.
+- debug_helm: locate. Call it while reproducing a problem and BEFORE editing
+  templates, _helpers.tpl, or values.yaml. Pass the option that is not taking
+  effect as a "values" filter to get the exact template/helper file:line that
+  reads it. Pass a snippet of the wrong rendered output as a "rendered" filter
+  to find the template that wrote it. Re-run after editing to confirm the flow
+  changed. It returns compact source sites by default; use mode="full" for the
+  complete execution flows and rendered write buffers.
+- resolve_breakpoints: only when debugging the debugger itself.
 
 Chart paths are relative to the server's working directory (or the working_dir
 argument). The helm binary must be compiled with debug symbols

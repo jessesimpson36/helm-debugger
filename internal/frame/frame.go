@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
+	"github.com/jessesimpson36/helm-debugger/internal/templatepath"
 )
 
 // A frame represents a breakpoint and a set of variables you want displayed at that frame
@@ -14,6 +15,9 @@ type Frame struct {
 	ReqVars     []string
 	Mapper      Mapper
 	WorkingDir  string
+	// Resolver maps runtime Go template names to source files on disk. It may be
+	// nil, in which case names are resolved relative to WorkingDir.
+	Resolver *templatepath.Resolver
 }
 
 type RenderedLine struct {
@@ -27,6 +31,9 @@ type ExecutionUnit struct {
 	LineNumber   int
 	FileName     string
 	LineContent  string
+	// SourceError is set when the source line could not be read from disk. The
+	// execution unit is still reported; only LineContent is missing.
+	SourceError string
 }
 
 // A mapper is helps bind a variable name to a common type

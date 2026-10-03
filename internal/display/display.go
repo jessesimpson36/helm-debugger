@@ -12,7 +12,8 @@ import (
 
 // ReadOneLine reads a single 1-based line from fileName. When fileName is
 // relative it is resolved against baseDir (which may be empty, meaning the
-// current directory).
+// current directory). Callers are responsible for reporting a failure; this
+// function does not write to stderr.
 func ReadOneLine(baseDir, fileName string, lineNumber int) (string, error) {
 	path := fileName
 	if !filepath.IsAbs(path) && baseDir != "" {
@@ -21,7 +22,6 @@ func ReadOneLine(baseDir, fileName string, lineNumber int) (string, error) {
 
 	file, err := os.Open(path)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error opening file:", err)
 		return "", err
 	}
 	defer file.Close()
@@ -33,14 +33,13 @@ func ReadOneLine(baseDir, fileName string, lineNumber int) (string, error) {
 	for scanner.Scan() {
 		if currentLine == lineNumber-1 {
 			returned = scanner.Text()
-			// fmt.Println(returned)
 			break
 		}
 		currentLine++
 	}
 
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Error reading file:", err)
+		return "", err
 	}
 	return returned, nil
 }

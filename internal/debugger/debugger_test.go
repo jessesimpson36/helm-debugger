@@ -2,14 +2,17 @@ package debugger
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jessesimpson36/helm-debugger/internal/frame"
 	"github.com/jessesimpson36/helm-debugger/internal/report"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
 )
@@ -80,5 +83,48 @@ func TestRunRequiresChart(t *testing.T) {
 	_, err := Run(context.Background(), &settings.Settings{CompiledHelmPath: "helm"}, io.Discard)
 	if err == nil {
 		t.Fatal("expected validation error for missing chart")
+	}
+}
+
+func TestCollectSourceWarnings(t *testing.T) {
+	events := []*frame.BindResult{
+		nil,
+		{ExecutionUnit: &frame.ExecutionUnit{FileName: "b/templates/b.yaml", SourceError: "boom"}},
+		{ExecutionUnit: &frame.ExecutionUnit{FileName: "a/templates/a.yaml", SourceError: "missing a"}},
+		// Duplicate file: only the first reason is kept.
+		{ExecutionUnit: &frame.ExecutionUnit{FileName: "a/templates/a.yaml", SourceError: "missing a again"}},
+		{ExecutionUnit: &frame.ExecutionUnit{FileName: "c/templates/c.yaml"}},
+		{RenderedLine: &frame.RenderedLine{Content: "x"}},
+	}
+
+	got := collectSourceWarnings(events)
+	want := []string{
+		"a/templates/a.yaml: missing a",
+		"b/templates/b.yaml: boom",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("collectSourceWarnings = %#v, want %#v", got, want)
+	}
+	if collectSourceWarnings(nil) != nil {
+		t.Fatal("expected nil warnings when there are no source errors")
+	}
+}
+
+func TestCollectSourceWarningsCapsOutput(t *testing.T) {
+	var events []*frame.BindResult
+	for i := 0; i < maxSourceWarnings+5; i++ {
+		events = append(events, &frame.BindResult{
+			ExecutionUnit: &frame.ExecutionUnit{
+				FileName:    fmt.Sprintf("templates/%02d.yaml", i),
+				SourceError: "missing",
+			},
+		})
+	}
+	got := collectSourceWarnings(events)
+	if len(got) != maxSourceWarnings+1 {
+		t.Fatalf("got %d warnings, want %d", len(got), maxSourceWarnings+1)
+	}
+	if last := got[len(got)-1]; !strings.Contains(last, "more template sources") {
+		t.Fatalf("last warning = %q, want a summary line", last)
 	}
 }
