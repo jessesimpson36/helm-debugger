@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://jessesimpson36.github.io/helm-debugger/sitemap.xml
