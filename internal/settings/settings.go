@@ -19,6 +19,7 @@ type Settings struct {
 	TemplateQueryFiles []string
 	HelpersQueryFiles  []string
 	ValuesQuery        []string
+	ShowVersion        bool
 }
 
 // NewSettings builds settings from command line flags. It is used by the CLI
@@ -44,6 +45,7 @@ func NewSettings() *Settings {
 	flag.StringVar(&settings.GoRoot, "goroot", "", "GOROOT used to resolve text/template breakpoints. Defaults to the debugger's own GOROOT.")
 	flag.StringVar(&settings.WorkingDir, "working-dir", "", "Directory the helm chart paths are relative to. Defaults to the current directory.")
 	flag.IntVar(&settings.DebugPort, "debug-port", 0, "Port for the headless delve server. 0 picks a free port.")
+	flag.BoolVar(&settings.ShowVersion, "version", false, "Print build and toolchain version information, then exit.")
 
 	flag.Parse()
 

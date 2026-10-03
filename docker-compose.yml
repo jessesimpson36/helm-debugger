@@ -4,10 +4,15 @@ services:
   helm-debugger:
     build:
       context: .
+      # Defaults mirror toolchain.env. Use `docker compose --env-file
+      # toolchain.env build` to take the pinned versions from that file.
       args:
-        GO_VERSION: "1.26.7"
-        HELM_VERSION: "v4.3.0"
-        DELVE_VERSION: "v1.27.2"
+        GO_VERSION: "${GO_VERSION:-1.26.7}"
+        HELM_VERSION: "${HELM_VERSION:-v4.3.0}"
+        DELVE_VERSION: "${DELVE_VERSION:-v1.27.2}"
+        VERSION: "${VERSION:-dev}"
+        COMMIT: "${COMMIT:-unknown}"
+        BUILD_DATE: "${BUILD_DATE:-unknown}"
     image: jessesimpson/helm-debugger:latest
     working_dir: /workspace
     volumes:

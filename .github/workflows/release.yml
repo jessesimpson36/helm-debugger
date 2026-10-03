@@ -1,0 +1,309 @@
+name: Release
+
+# Pushing a semver tag (v0.1.0, v0.2.0-rc.1, ...) cuts a release. Manual runs
+# are for re-cutting a release or publishing from a branch; they need a version
+# input. See docs/RELEASING.md.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v0.2.0"
+        required: true
+        type: string
+
+permissions:
+  actions: write  # buildx gha cache
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_GHCR: ghcr.io/${{ github.repository }}
+  IMAGE_DOCKERHUB: docker.io/jessesimpson/helm-debugger
+  # Keep in sync with the base image platform support. Add linux/arm64 when the
+  # emulated helm build fits the CI budget.
+  PLATFORMS: linux/amd64
+
+jobs:
+  # Resolve the release version and the pinned toolchain from one place so the
+  # image, SBOMs and metadata all describe the same build.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      go_version: ${{ steps.toolchain.outputs.go_version }}
+      helm_version: ${{ steps.toolchain.outputs.helm_version }}
+      delve_version: ${{ steps.toolchain.outputs.delve_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned toolchain
+        id: toolchain
+        run: |
+          set -euo pipefail
+          # toolchain.env is valid shell as well as make.
+          set -a
+          . ./toolchain.env
+          set +a
+          {
+            echo "go_version=${GO_VERSION}"
+            echo "helm_version=${HELM_VERSION}"
+            echo "delve_version=${DELVE_VERSION}"
+          } >> "$GITHUB_OUTPUT"
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="${{ inputs.version }}"
+          fi
+          case "$version" in
+            v*) ;;
+            *) version="v${version}" ;;
+          esac
+          prerelease=false
+          case "$version" in
+            *-*) prerelease=true ;;
+          esac
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${version} (prerelease=${prerelease})"
+
+  # SBOM for the source tree (Go modules, vendored files, workflows).
+  sbom-source:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate source SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: helm-debugger-${{ needs.prepare.outputs.version }}-source.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Generate source SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: helm-debugger-${{ needs.prepare.outputs.version }}-source.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Upload source SBOMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-sbom
+          path: |
+            helm-debugger-${{ needs.prepare.outputs.version }}-source.spdx.json
+            helm-debugger-${{ needs.prepare.outputs.version }}-source.cdx.json
+          if-no-files-found: error
+
+  # Build and push the container image (the MCP server runtime) to GHCR and,
+  # when Docker Hub credentials are configured, to Docker Hub as well.
+  image:
+    needs: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      dockerhub: ${{ steps.tags.outputs.dockerhub }}
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+      - name: Compute image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          numeric="${version#v}"
+          prerelease="${{ needs.prepare.outputs.prerelease }}"
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          dockerhub=false
+          [ -n "${DOCKERHUB_TOKEN:-}" ] && dockerhub=true
+
+          helm_ver="${{ needs.prepare.outputs.helm_version }}"
+          delve_ver="${{ needs.prepare.outputs.delve_version }}"
+          toolchain="go${{ needs.prepare.outputs.go_version }}-helm${helm_ver#v}-delve${delve_ver#v}"
+
+          tags=""
+          add() {
+            if [ -z "$tags" ]; then tags="$1"; else tags="${tags}"$'\n'"$1"; fi
+          }
+
+          add "${IMAGE_GHCR}:${version}"
+          add "${IMAGE_GHCR}:${numeric}"
+          add "${IMAGE_GHCR}:${toolchain}"
+          if [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+            add "${IMAGE_DOCKERHUB}:${version}"
+            add "${IMAGE_DOCKERHUB}:${numeric}"
+            add "${IMAGE_DOCKERHUB}:${toolchain}"
+          fi
+
+          if [ "$prerelease" = "false" ]; then
+            major_minor="${numeric%.*}"
+            major="${numeric%%.*}"
+            add "${IMAGE_GHCR}:${major_minor}"
+            add "${IMAGE_GHCR}:${major}"
+            add "${IMAGE_GHCR}:latest"
+            if [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+              add "${IMAGE_DOCKERHUB}:${major_minor}"
+              add "${IMAGE_DOCKERHUB}:${major}"
+              add "${IMAGE_DOCKERHUB}:latest"
+            fi
+          fi
+
+          {
+            echo "tags<<EOF"
+            echo "$tags"
+            echo "EOF"
+            echo "build_date=${build_date}"
+            echo "dockerhub=${dockerhub}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            GO_VERSION=${{ needs.prepare.outputs.go_version }}
+            HELM_VERSION=${{ needs.prepare.outputs.helm_version }}
+            DELVE_VERSION=${{ needs.prepare.outputs.delve_version }}
+            VERSION=${{ needs.prepare.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ steps.tags.outputs.build_date }}
+          # Registry-native SBOM and provenance attestations, per platform.
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Attest image provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE_GHCR }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate image SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          # A multi-arch index is scanned for the runner's platform (linux/amd64);
+          # per-platform SBOMs are attached to the index by the build above.
+          image: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: spdx-json
+          output-file: helm-debugger-${{ needs.prepare.outputs.version }}-image.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate image SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_GHCR }}@${{ steps.build.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: cyclonedx-json
+          output-file: helm-debugger-${{ needs.prepare.outputs.version }}-image.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Upload image SBOMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-sbom
+          path: |
+            helm-debugger-${{ needs.prepare.outputs.version }}-image.spdx.json
+            helm-debugger-${{ needs.prepare.outputs.version }}-image.cdx.json
+          if-no-files-found: error
+
+  # Publish the GitHub release with the SBOMs, build metadata, checksums and
+  # the canonical MCP configuration for this version.
+  release:
+    needs: [prepare, image, sbom-source]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Assemble release assets
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          COMMIT: ${{ github.sha }}
+          GO_VERSION: ${{ needs.prepare.outputs.go_version }}
+          HELM_VERSION: ${{ needs.prepare.outputs.helm_version }}
+          DELVE_VERSION: ${{ needs.prepare.outputs.delve_version }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+          DOCKERHUB_ENABLED: ${{ needs.image.outputs.dockerhub }}
+          PLATFORMS: ${{ env.PLATFORMS }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp -v artifacts/* release/
+          cp -v packaging/install-mcp.sh release/install-mcp.sh
+
+          VERSION="$VERSION" \
+          COMMIT="$COMMIT" \
+          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          GO_VERSION="$GO_VERSION" \
+          HELM_VERSION="$HELM_VERSION" \
+          DELVE_VERSION="$DELVE_VERSION" \
+          IMAGE="${IMAGE_GHCR}:${VERSION}" \
+          IMAGE_DIGEST="$IMAGE_DIGEST" \
+          PLATFORMS="$PLATFORMS" \
+          SBOM_SOURCE="helm-debugger-${VERSION}-source.spdx.json" \
+          SBOM_IMAGE="helm-debugger-${VERSION}-image.spdx.json" \
+            ./scripts/release-metadata.sh > release/metadata.json
+
+          sed "s|__IMAGE__|${IMAGE_GHCR}:${VERSION}|" packaging/opencode.mcp.json > release/opencode-ghcr.json
+          if [ "$DOCKERHUB_ENABLED" = "true" ]; then
+            sed "s|__IMAGE__|${IMAGE_DOCKERHUB}:${VERSION}|" packaging/opencode.mcp.json > release/opencode-dockerhub.json
+          fi
+
+          ( cd release && find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' \
+              | sort | xargs sha256sum > SHA256SUMS )
+
+          echo "--- release assets ---"
+          ls -l release
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: ${{ needs.prepare.outputs.version }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          generate_release_notes: true
+          files: release/*

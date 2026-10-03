@@ -10,10 +10,17 @@ import (
 	"github.com/jessesimpson36/helm-debugger/internal/alternativemain/model"
 	"github.com/jessesimpson36/helm-debugger/internal/mcpserver"
 	"github.com/jessesimpson36/helm-debugger/internal/settings"
+	"github.com/jessesimpson36/helm-debugger/internal/version"
 )
 
 func main() {
 	cfg := settings.NewSettings()
+
+	// --version is metadata only: print it and exit before any mode runs.
+	if cfg.ShowVersion {
+		fmt.Println(version.Get().String())
+		return
+	}
 
 	var err error
 	switch cfg.Mode {

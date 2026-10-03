@@ -1,13 +1,31 @@
 .PHONY: all build test test-unit test-race test-integration vet fmt clean \
 	clone_helm compile_helm clone_dlv compile_dlv run \
 	test_values_query test_helpers_query test_template_query test_rendered_query test_all_queries \
-	docker-build docker-test docker-run docker-mcp docker-shell docker-push
+	docker-build docker-test docker-run docker-mcp docker-shell docker-push \
+	version print-toolchain release-metadata
 
-# Pinned toolchain versions for the deterministic Docker environment. Override
-# on the command line, e.g. `make docker-build GO_VERSION=1.26.7`.
-GO_VERSION    ?= 1.26.7
-HELM_VERSION  ?= v4.3.0
-DELVE_VERSION ?= v1.27.2
+# Pinned toolchain versions for the CLI and the deterministic Docker
+# environment. They live in one file that CI also sources, so the two cannot
+# drift. Override them on the command line, e.g.
+#   make docker-build GO_VERSION=1.26.7
+include toolchain.env
+
+# Release identity. VERSION defaults to the nearest git tag (or a short SHA,
+# with -dirty when the tree is modified) so local builds are traceable too.
+VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT        ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BUILD_DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+MODULE        := github.com/jessesimpson36/helm-debugger
+VERSION_PKG   := $(MODULE)/internal/version
+# Injected into internal/version so `helm-debugger --version` and the MCP
+# initialize response report the same metadata written into the release.
+LDFLAGS       := -X $(VERSION_PKG).Version=$(VERSION) \
+                 -X $(VERSION_PKG).Commit=$(COMMIT) \
+                 -X $(VERSION_PKG).BuildDate=$(BUILD_DATE) \
+                 -X $(VERSION_PKG).HelmVersion=$(HELM_VERSION) \
+                 -X $(VERSION_PKG).DelveVersion=$(DELVE_VERSION)
+
 IMAGE         ?= jessesimpson/helm-debugger:latest
 REGISTRY_REPO ?= jessesimpson/helm-debugger
 # Immutable tag that records exactly what the image contains.
@@ -19,7 +37,24 @@ DOCKER_RUN_FLAGS := --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined
 all: build
 
 build:
-	go build -o helm-debugger .
+	go build -trimpath -ldflags '$(LDFLAGS)' -o helm-debugger .
+
+# Print the build/toolchain metadata the binary would report.
+version:
+	@go run -ldflags '$(LDFLAGS)' . --version
+
+print-toolchain:
+	@echo "go=$(GO_VERSION) helm=$(HELM_VERSION) delve=$(DELVE_VERSION)"
+
+# Write the same release metadata JSON CI attaches to a release. Set
+# IMAGE_DIGEST (and friends) to record the published image.
+release-metadata:
+	@mkdir -p dist
+	VERSION=$(VERSION) COMMIT=$(COMMIT) BUILD_DATE=$(BUILD_DATE) \
+	GO_VERSION=$(GO_VERSION) HELM_VERSION=$(HELM_VERSION) DELVE_VERSION=$(DELVE_VERSION) \
+	IMAGE_DIGEST='$(IMAGE_DIGEST)' IMAGE='$(IMAGE)' \
+	./scripts/release-metadata.sh > dist/metadata.json
+	@echo "wrote dist/metadata.json"
 
 test: test-unit
 
@@ -95,6 +130,9 @@ docker-build:
 		--build-arg GO_VERSION=$(GO_VERSION) \
 		--build-arg HELM_VERSION=$(HELM_VERSION) \
 		--build-arg DELVE_VERSION=$(DELVE_VERSION) \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		-t $(IMAGE) .
 
 # Publish both the moving `latest` tag and an immutable tag describing the

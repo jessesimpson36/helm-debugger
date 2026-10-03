@@ -11,10 +11,9 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-)
 
-// Version is reported in the MCP server implementation metadata.
-const Version = "0.1.0"
+	"github.com/jessesimpson36/helm-debugger/internal/version"
+)
 
 // Run starts the MCP server on stdio. It blocks until the client disconnects or
 // ctx is cancelled.
@@ -34,8 +33,10 @@ func NewServer(logger *log.Logger) *mcp.Server {
 		logger = log.New(io.Discard, "", 0)
 	}
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "helm-debugger",
-		Version: Version,
+		Name: "helm-debugger",
+		// The release version is injected at build time; clients see it in the
+		// MCP initialize response, which is how an upgrade is confirmed.
+		Version: version.Version,
 	}, &mcp.ServerOptions{
 		Instructions: instructions,
 	})

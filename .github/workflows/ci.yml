@@ -9,11 +9,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Read pinned toolchain
+        id: toolchain
+        run: |
+          set -euo pipefail
+          set -a
+          . ./toolchain.env
+          set +a
+          echo "go_version=${GO_VERSION}" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26.7"
+          go-version: ${{ steps.toolchain.outputs.go_version }}
       - name: Build
-        run: go build ./...
+        run: make build
+      - name: Report version metadata
+        run: ./helm-debugger --version
       - name: Vet
         run: go vet ./...
       - name: Unit tests
@@ -24,7 +34,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build deterministic image
-        run: docker build -t helm-debugger:ci .
+        run: make docker-build IMAGE=helm-debugger:ci
+      - name: Verify image metadata
+        run: |
+          docker run --rm helm-debugger:ci --version
+          docker inspect helm-debugger:ci \
+            --format '{{ index .Config.Labels "io.helm-debugger.helm.version" }} / {{ index .Config.Labels "io.helm-debugger.delve.version" }}'
       - name: Smoke test the debugger in the image
         run: |
           docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \

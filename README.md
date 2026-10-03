@@ -37,7 +37,9 @@ image are the same, so this is automatic.
 
 ### Determinism with Docker
 
-`make docker-build` builds an image from `Dockerfile` that pins:
+`make docker-build` builds an image from `Dockerfile` whose toolchain is pinned
+in [`toolchain.env`](toolchain.env) — the same file CI and the release workflow
+read, so builds and release metadata cannot drift:
 
 | Component | Default | Build arg |
 | --- | --- | --- |
@@ -120,24 +122,33 @@ Each time a breakpoint is hit, the program captures the execution path affecting
     	Comma-delimited list of query files for templates and helpers.
   -values string
     	Comma-delimited list of values queries to capture.
+  -version
+    	Print build and toolchain version information, then exit.
   -working-dir string
     	Directory the helm chart paths are relative to. Defaults to the current directory.
 ```
 
+`helm-debugger --version` prints the release version, commit, build date, and
+the Go/Helm/Delve versions baked into the build. The same version is reported
+by the MCP server in its `initialize` response, so a client can confirm what it
+is talking to.
+
 ## Running with Docker
 
-A prebuilt image is published to Docker Hub as
-`jessesimpson/helm-debugger:latest`. An immutable tag describing the exact
-toolchain is pushed alongside it (for example
-`jessesimpson/helm-debugger:go1.26.7-helm4.3.0-delve1.27.2`); pin that tag or the
-digest if you need strict reproducibility. The image bundles a debug-enabled
-helm and the pinned toolchain, so there is nothing else to install:
+Prebuilt images are published to GitHub Container Registry as
+`ghcr.io/jessesimpson36/helm-debugger` (primary) and mirrored to Docker Hub as
+`jessesimpson/helm-debugger`. Each release publishes the version tags
+(`vX.Y.Z`, `X.Y.Z`, `X.Y`, `X`, `latest`) plus an immutable toolchain tag
+describing exactly what is inside (for example
+`go1.26.7-helm4.3.0-delve1.27.2`); pin a version tag or the digest if you need
+strict reproducibility. The image bundles a debug-enabled helm and the pinned
+toolchain, so there is nothing else to install:
 
 ```bash
 # Use the published image. Docker pulls it on first run.
 docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
   -v "$PWD:/workspace" -w /workspace \
-  jessesimpson/helm-debugger:latest --mode model --helm-path helm --chart test \
+  ghcr.io/jessesimpson36/helm-debugger:latest --mode model --helm-path helm --chart test \
   --values image.tag --extra-command-args '--show-only templates/deployment.yaml'
 ```
 
@@ -169,8 +180,60 @@ it, e.g.:
 ```bash
 docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
   -v /path/to/your/repo:/workspace -w /workspace \
-  jessesimpson/helm-debugger:latest --mode model --helm-path helm --chart mychart \
+  ghcr.io/jessesimpson36/helm-debugger:latest --mode model --helm-path helm --chart mychart \
   --values image.tag --extra-command-args '--show-only templates/deployment.yaml'
+```
+
+## Releases and upgrading
+
+Every release is built and published by
+[`.github/workflows/release.yml`](.github/workflows/release.yml); the process is
+documented in [`docs/RELEASING.md`](docs/RELEASING.md). A release contains:
+
+- the container image (the MCP server / CLI runtime) on GHCR and Docker Hub;
+- an **SBOM** for the source tree and for the image, in both SPDX and CycloneDX;
+- **build metadata** (`metadata.json`) recording the source commit, build date,
+  and the pinned Go, Helm, and Delve versions, plus the image digest;
+- a version-pinned **OpenCode MCP config** and the `install-mcp.sh` helper.
+
+The image also carries the same information as OCI labels and as
+`/usr/local/share/helm-debugger/version.txt`, and registry-native SBOM and
+provenance attestations.
+
+### Upgrading
+
+For Docker use, pick a tag and change one line:
+
+```bash
+docker pull ghcr.io/jessesimpson36/helm-debugger:v0.2.0
+```
+
+| Tag | Behavior |
+| --- | --- |
+| `vX.Y.Z` | Immutable. Reproducible; upgrade by changing the tag. |
+| `X.Y` / `X` | Moving. Receive patch/minor updates within a line. |
+| `latest` | Moving. Newest non-prerelease. |
+| `goX.Y.Z-helm...-delve...` | Immutable toolchain tag; changes only when the toolchain does. |
+
+OpenCode does not update MCP server configuration on its own, so the config is
+shipped as a release asset. Each release attaches
+`opencode-ghcr.json` / `opencode-dockerhub.json` pinned to that version, plus
+`install-mcp.sh`, which merges only the `helm-debugger` server entry into an
+existing config (leaving other servers and settings alone):
+
+```bash
+bash install-mcp.sh v0.2.0              # pin a version, project-local config
+bash install-mcp.sh latest --global     # or track latest globally
+```
+
+(The download may not keep the executable bit, hence `bash`.) The script needs
+`jq` and only rewrites the `helm-debugger` entry.
+
+After changing the config, reconnect the server (`/mcps` → helm-debugger, or
+`opencode service restart`), then confirm the reported version:
+
+```bash
+docker run --rm ghcr.io/jessesimpson36/helm-debugger:v0.2.0 --version
 ```
 
 ## Running locally
@@ -208,13 +271,20 @@ surface server instructions get the guidance without any per-repository config.
 ### opencode
 
 This repository ships an `opencode.json` that registers the server using the
-Docker image. Build the image first, then it is available to opencode in this
-project:
+Docker image from the Docker Hub mirror (the GHCR image works identically).
+Build the image first, then it is available to opencode in this project:
 
 ```bash
 make docker-build
 opencode mcp list
 ```
+
+To consume a published version instead of building locally, use the
+`install-mcp.sh` helper attached to each release (see
+[Upgrading](#upgrading)), or copy the pinned `opencode-ghcr.json` /
+`opencode-dockerhub.json` from the release assets. The server config changes
+only when the release changes how the server is invoked; the release assets are
+generated from `packaging/opencode.mcp.json` so that contract is explicit.
 
 `debug_helm` accepts filters analogous to the CLI flags. `chart` is a name or
 path relative to `working_dir`, or pass `chart_path` to point directly at a

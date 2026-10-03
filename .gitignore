@@ -2,3 +2,4 @@ helm
 helm-debugger
 delve
 .idea/
+dist/
