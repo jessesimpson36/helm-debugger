@@ -13,6 +13,7 @@ import (
 	"github.com/go-delve/delve/service/api"
 	"github.com/jessesimpson36/helm-debugger/internal/breakpointevent"
 	"github.com/jessesimpson36/helm-debugger/internal/breakpoints"
+	"github.com/jessesimpson36/helm-debugger/internal/display"
 	"github.com/jessesimpson36/helm-debugger/internal/dlvcontroller"
 	"github.com/jessesimpson36/helm-debugger/internal/executionflow"
 	"github.com/jessesimpson36/helm-debugger/internal/frame"
@@ -182,11 +183,51 @@ func Run(ctx context.Context, cfg *settings.Settings, log io.Writer) (*Result, e
 		attachFieldCaptures(events, captures)
 	}
 
+	flows := breakpointevent.Process(events)
+	applyAnchors(flows, runPlan.anchors, cfg.ChartDirectory())
+
 	return &Result{
-		Flows:       breakpointevent.Process(events),
+		Flows:       flows,
 		LineNumbers: lines,
 		Warnings:    collectSourceWarnings(events),
 	}, nil
+}
+
+// applyAnchors sets each flow's anchor to the source line that invokes a queried
+// helper, when known, and removes the owner-template line from the helper list
+// if it duplicates the anchor. Without this the anchor would be whichever
+// owner-template node was captured first.
+func applyAnchors(flows []*executionflow.ExecutionFlow, anchors map[string]includegraph.CallSite, chartPath string) {
+	if len(anchors) == 0 {
+		return
+	}
+	for _, flow := range flows {
+		site, ok := anchors[flow.Owner]
+		if !ok {
+			continue
+		}
+		content := ""
+		if line, err := display.ResolveAndReadOneLine(chartPath, flow.Owner, site.Line); err == nil {
+			content = line
+		}
+		flow.Template = &frame.ExecutionUnit{
+			FunctionName: flow.Owner,
+			FileName:     flow.Owner,
+			LineNumber:   site.Line,
+			LineContent:  content,
+		}
+		// Drop captured owner-template lines entirely: the anchor represents the
+		// owner, and its other nodes would otherwise sit between the anchor and
+		// the helper subtree as noise.
+		kept := flow.Helpers[:0]
+		for _, helper := range flow.Helpers {
+			if helper.FileName == flow.Owner {
+				continue
+			}
+			kept = append(kept, helper)
+		}
+		flow.Helpers = kept
+	}
 }
 
 // plan is the breakpoint configuration for a run.
@@ -201,6 +242,10 @@ type plan struct {
 	// rendered is the runtime names of the chart's top-level (rendered)
 	// templates. Flow ownership is assigned from this set.
 	rendered []string
+	// anchors maps an owner runtime name to the source line that invokes a
+	// queried helper, used to anchor the flow at the call site rather than at
+	// whichever node was captured first.
+	anchors map[string]includegraph.CallSite
 }
 
 // planFrames builds the breakpoint frames for a run. It always includes the walk
@@ -240,6 +285,11 @@ func planFrames(ctx context.Context, cfg *settings.Settings, lines breakpoints.L
 			fmt.Fprintf(log, "warning: a queried helper has an unresolved include; walking all nodes\n")
 		}
 		walkNames = nil
+	} else {
+		// Also walk the rendered templates themselves, so the flow's anchor is
+		// the line that invokes the helper (a node of the owning template)
+		// rather than whatever helper node happened to be captured first.
+		walkNames = dedupe(append(append([]string(nil), walkNames...), renderedNames...))
 	}
 
 	triggerNames := append(append([]string(nil), renderedNames...), walkNames...)
@@ -247,11 +297,24 @@ func planFrames(ctx context.Context, cfg *settings.Settings, lines breakpoints.L
 	scoped := breakpoints.GetTemplateExecuteFrame(lines, breakpoints.TemplateExecuteCond(dedupe(triggerNames)))
 	scoped.ChartPath = cfg.ChartDirectory()
 
+	// Resolve each owner's anchor line: the line in the rendered template that
+	// invokes a queried helper. This is what the report shows as the flow's
+	// entry point.
+	anchors := map[string]includegraph.CallSite{}
+	if g, graphErr := includegraph.Load(cfg.ChartDirectory()); graphErr == nil {
+		for _, owner := range renderedNames {
+			if site, ok := g.Anchor(owner, scopedNames); ok {
+				anchors[owner] = site
+			}
+		}
+	}
+
 	return plan{
 		frames:    []*delegate.DelegateFrame{walk, rendered, scoped},
 		walkBP:    walk.Breakpoints[0],
 		walkNames: walkNames,
 		rendered:  renderedNames,
+		anchors:   anchors,
 	}
 }
 

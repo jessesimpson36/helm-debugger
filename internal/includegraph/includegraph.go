@@ -20,6 +20,13 @@ import (
 	"strings"
 )
 
+// CallSite is a place a template invokes another: a chart-relative file and a
+// 1-based line.
+type CallSite struct {
+	File string
+	Line int
+}
+
 // Graph is the resolved helper call graph for one chart.
 type Graph struct {
 	// calls maps a defined template name to the set of defined names its body
@@ -31,6 +38,9 @@ type Graph struct {
 	unresolved map[string]bool
 	// defined is the set of every template name defined anywhere in the chart.
 	defined map[string]bool
+	// callSites maps a callee name to the places it is invoked from. Top-level
+	// templates are included as callers so a helper's callers can be found.
+	callSites map[string][]CallSite
 }
 
 // defineRe matches `define "name"` in a template file.
@@ -53,6 +63,7 @@ func Load(chartDir string) (*Graph, error) {
 		directCalls: map[string]map[string]struct{}{},
 		unresolved:  map[string]bool{},
 		defined:     map[string]bool{},
+		callSites:   map[string][]CallSite{},
 	}
 
 	var files []string
@@ -83,22 +94,46 @@ func Load(chartDir string) (*Graph, error) {
 		if readErr != nil {
 			continue
 		}
-		g.parseFile(string(data))
+		g.parseFile(chartRelative(chartDir, path), string(data))
 	}
 	return g, nil
 }
 
+// chartRelative returns the path of file relative to chartDir, using forward
+// slashes. Runtime template names are prefixed with the chart name, so callers
+// that need to match them prepend the chart name themselves.
+func chartRelative(chartDir, file string) string {
+	rel, err := filepath.Rel(chartDir, file)
+	if err != nil {
+		return filepath.ToSlash(file)
+	}
+	return filepath.ToSlash(rel)
+}
+
 // parseFile registers every definition in a file and the literal calls in each
-// definition's body.
-func (g *Graph) parseFile(content string) {
-	for _, seg := range splitDefinitions(content) {
+// definition's body. file is the chart-relative path used for call sites.
+func (g *Graph) parseFile(file, content string) {
+	defs := splitDefinitions(content)
+
+	// Calls made by the file's top-level template body (outside any define) are
+	// the ones that invoke helpers from a rendered template.
+	covered := make([]int, 0, len(defs)*2)
+	for _, seg := range defs {
+		covered = append(covered, seg.bodyStart, seg.bodyStart+len(seg.body))
+	}
+	for _, region := range uncoveredRegions(content, covered) {
+		g.recordCalls(file, content, region.start, content[region.start:region.end])
+	}
+
+	for _, seg := range defs {
 		if seg.name == "" {
 			continue
 		}
 		g.defined[seg.name] = true
 		calls := map[string]struct{}{}
-		for _, m := range callRe.FindAllStringSubmatch(seg.body, -1) {
-			calls[m[1]] = struct{}{}
+		for _, loc := range callRe.FindAllStringSubmatchIndex(seg.body, -1) {
+			calls[seg.body[loc[2]:loc[3]]] = struct{}{}
+			g.recordCallSite(file, content, seg.bodyStart+loc[0], seg.body[loc[2]:loc[3]])
 		}
 		g.directCalls[seg.name] = calls
 		if dynamicCallRe.MatchString(seg.body) {
@@ -107,10 +142,65 @@ func (g *Graph) parseFile(content string) {
 	}
 }
 
+// region is a half-open byte range within a file.
+type region struct {
+	start int
+	end   int
+}
+
+// uncoveredRegions returns the parts of content not covered by the sorted,
+// non-overlapping [start,end) ranges.
+func uncoveredRegions(content string, covered []int) []region {
+	if len(content) == 0 {
+		return nil
+	}
+	var out []region
+	prev := 0
+	for i := 0; i+1 < len(covered); i += 2 {
+		start, end := covered[i], covered[i+1]
+		if start > prev {
+			out = append(out, region{prev, start})
+		}
+		prev = end
+	}
+	if prev < len(content) {
+		out = append(out, region{prev, len(content)})
+	}
+	return out
+}
+
+// recordCalls records every literal include/template call in body, whose start
+// is at offset base within content.
+func (g *Graph) recordCalls(file, content string, base int, body string) {
+	for _, loc := range callRe.FindAllStringSubmatchIndex(body, -1) {
+		g.recordCallSite(file, content, base+loc[0], body[loc[2]:loc[3]])
+	}
+}
+
+func (g *Graph) recordCallSite(file, content string, offset int, callee string) {
+	g.callSites[callee] = append(g.callSites[callee], CallSite{
+		File: file,
+		Line: lineAtOffset(content, offset),
+	})
+}
+
+// lineAtOffset returns the 1-based line containing byte offset in content.
+func lineAtOffset(content string, offset int) int {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(content) {
+		offset = len(content)
+	}
+	return 1 + strings.Count(content[:offset], "\n")
+}
+
 // definition is one `define "name" ... end` block.
 type definition struct {
 	name string
 	body string
+	// bodyStart is the byte offset of the body within the file.
+	bodyStart int
 }
 
 // splitDefinitions returns the define blocks in content. It is a lightweight
@@ -127,7 +217,7 @@ func splitDefinitions(content string) []definition {
 		if i+1 < len(locs) {
 			bodyEnd = locs[i+1][0]
 		}
-		out = append(out, definition{name: name, body: content[bodyStart:bodyEnd]})
+		out = append(out, definition{name: name, body: content[bodyStart:bodyEnd], bodyStart: bodyStart})
 	}
 	return out
 }
@@ -141,6 +231,29 @@ func (g *Graph) Defined(name string) bool {
 // resolved statically, so its reach cannot be bounded.
 func (g *Graph) Unresolved(name string) bool {
 	return g.unresolved[name]
+}
+
+// Anchor returns the source location of the first call to any of callees that
+// appears in ownerRT, where ownerRT is a runtime template name (chart-prefixed,
+// for example "mychart/templates/deployment.yaml"). It lets the report anchor a
+// flow at the line that invokes the queried helper. The second result is false
+// when no call site matches.
+func (g *Graph) Anchor(ownerRT string, callees []string) (CallSite, bool) {
+	var best CallSite
+	for _, callee := range callees {
+		for _, site := range g.callSites[callee] {
+			// Call sites are chart-relative ("templates/deployment.yaml") and
+			// runtime owner names are chart-prefixed
+			// ("mychart/templates/deployment.yaml"), so a suffix match ties them.
+			if !strings.HasSuffix(ownerRT, site.File) {
+				continue
+			}
+			if best.File == "" || site.Line < best.Line {
+				best = CallSite{File: ownerRT, Line: site.Line}
+			}
+		}
+	}
+	return best, best.File != ""
 }
 
 // Closure returns the set of definition names reachable from roots by following

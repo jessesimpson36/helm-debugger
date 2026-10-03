@@ -36,6 +36,30 @@ helm.sh/chart: {{ include "test.chart" . }}
 {{- end }}
 `
 
+func TestAnchorFindsCallSite(t *testing.T) {
+	// A helper invoked from a rendered template's body (outside a define) must
+	// be recorded as a call site so the flow can anchor at the invocation line.
+	content := "apiVersion: v1\nkind: Pod\nmetadata:\n  name: {{ include \"test.serviceAccountName\" . }}\n"
+	g := &Graph{
+		directCalls: map[string]map[string]struct{}{},
+		unresolved:  map[string]bool{},
+		defined:     map[string]bool{},
+		callSites:   map[string][]CallSite{},
+	}
+	g.parseFile("templates/serviceaccount.yaml", content)
+
+	site, ok := g.Anchor("test/templates/serviceaccount.yaml", []string{"test.serviceAccountName"})
+	if !ok {
+		t.Fatal("expected to find an anchor call site")
+	}
+	if site.Line != 4 {
+		t.Fatalf("anchor line = %d, want 4", site.Line)
+	}
+	if _, ok := g.Anchor("test/templates/other.yaml", []string{"test.serviceAccountName"}); ok {
+		t.Fatal("did not expect an anchor in an unrelated owner")
+	}
+}
+
 func TestClosureResolvesNestedIncludes(t *testing.T) {
 	g := parseString(t, sample)
 
@@ -93,7 +117,8 @@ func parseString(t *testing.T, content string) *Graph {
 		directCalls: map[string]map[string]struct{}{},
 		unresolved:  map[string]bool{},
 		defined:     map[string]bool{},
+		callSites:   map[string][]CallSite{},
 	}
-	g.parseFile(content)
+	g.parseFile("templates/_helpers.tpl", content)
 	return g
 }
