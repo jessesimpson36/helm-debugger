@@ -14,7 +14,7 @@
   -helper-file string
     	Comma-delimited list of query files for helpers.
   -mode string
-    	Mode of operation: model, branch, line, mcp (default "model")
+    	Mode of operation: model, mcp (default "model")
   -rendered-file string
     	Comma-delimited list of query files for rendered manifest.
   -template-file string

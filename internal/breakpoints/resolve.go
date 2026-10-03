@@ -25,13 +25,6 @@ type LineNumbers struct {
 	// RenderedManifest is the statement in (*state).walk that writes a text node
 	// to the output buffer, used to snapshot the rendered manifest.
 	RenderedManifest int
-	// ConditionalStart is where (*state).walkIfOrWith evaluates its pipeline.
-	ConditionalStart int
-	// ConditionalTrue is the branch taken when the condition is truthy.
-	ConditionalTrue int
-	// ConditionalFalse is the branch taken when the condition is falsy and an
-	// else block exists.
-	ConditionalFalse int
 }
 
 // FallbackLines are the line numbers for the Go 1.25.x/1.26.x standard library
@@ -40,9 +33,6 @@ type LineNumbers struct {
 var FallbackLines = LineNumbers{
 	LineStart:        262,
 	RenderedManifest: 287,
-	ConditionalStart: 301,
-	ConditionalTrue:  306,
-	ConditionalFalse: 313,
 }
 
 // DefaultGOROOT returns the GOROOT to resolve standard library sources from.
@@ -103,11 +93,10 @@ func resolveFile(path string) (LineNumbers, error) {
 	defer f.Close()
 
 	var (
-		result     LineNumbers
-		scanner    = bufio.NewScanner(f)
-		lineNo     int
-		inWalk     bool
-		inIfOrWith bool
+		result  LineNumbers
+		scanner = bufio.NewScanner(f)
+		lineNo  int
+		inWalk  bool
 	)
 
 	for scanner.Scan() {
@@ -115,15 +104,13 @@ func resolveFile(path string) (LineNumbers, error) {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
-		// Track which function body we are in. The two functions we care about
-		// are (*state).walk and (*state).walkIfOrWith.
+		// Track which function body we are in. Only (*state).walk is relevant;
+		// the leading "func " case resets the flag for every other function.
 		switch {
 		case strings.HasPrefix(trimmed, "func (s *state) walk("):
-			inWalk, inIfOrWith = true, false
-		case strings.HasPrefix(trimmed, "func (s *state) walkIfOrWith("):
-			inWalk, inIfOrWith = false, true
+			inWalk = true
 		case strings.HasPrefix(trimmed, "func "):
-			inWalk, inIfOrWith = false, false
+			inWalk = false
 		}
 
 		if inWalk {
@@ -132,17 +119,6 @@ func resolveFile(path string) (LineNumbers, error) {
 			}
 			if result.RenderedManifest == 0 && strings.Contains(trimmed, "s.wr.Write(node.Text)") {
 				result.RenderedManifest = lineNo
-			}
-		}
-		if inIfOrWith {
-			if result.ConditionalStart == 0 && strings.Contains(trimmed, "s.evalPipeline(dot, pipe)") {
-				result.ConditionalStart = lineNo
-			}
-			if result.ConditionalTrue == 0 && trimmed == "if truth {" {
-				result.ConditionalTrue = lineNo
-			}
-			if result.ConditionalFalse == 0 && trimmed == "s.walk(dot, elseList)" {
-				result.ConditionalFalse = lineNo
 			}
 		}
 	}
@@ -156,15 +132,6 @@ func resolveFile(path string) (LineNumbers, error) {
 	}
 	if result.RenderedManifest == 0 {
 		missing = append(missing, "rendered manifest (s.wr.Write)")
-	}
-	if result.ConditionalStart == 0 {
-		missing = append(missing, "conditional start (evalPipeline)")
-	}
-	if result.ConditionalTrue == 0 {
-		missing = append(missing, "conditional true (if truth)")
-	}
-	if result.ConditionalFalse == 0 {
-		missing = append(missing, "conditional false (else walk)")
 	}
 	if len(missing) > 0 {
 		return LineNumbers{}, fmt.Errorf("could not find %s in %s", strings.Join(missing, ", "), path)

@@ -11,9 +11,7 @@ import (
 
 func GetFrameType(undeterminedFrame *frame.Frame) string {
 	for _, breakpoint := range undeterminedFrame.Breakpoints {
-		if strings.HasPrefix(breakpoint.Name, "conditional") {
-			return "conditional"
-		} else if strings.HasPrefix(breakpoint.Name, "line") {
+		if strings.HasPrefix(breakpoint.Name, "line") {
 			return "line"
 		} else if strings.HasPrefix(breakpoint.Name, "rendered") {
 			return "rendered"
@@ -33,7 +31,7 @@ func (d *DelegateFrame) Gather(client *rpc2.RPCClient) (map[string]string, error
 	}
 	frameType := GetFrameType(dFrame)
 	switch frameType {
-	case "conditional", "line":
+	case "line":
 		tFrame := templateframe.TemplateFrame{
 			Breakpoints: d.Breakpoints,
 			ReqVars:     d.ReqVars,
@@ -63,7 +61,7 @@ func (d *DelegateFrame) Bind(respVars map[string]string) (*frame.BindResult, err
 	}
 	frameType := GetFrameType(dFrame)
 	switch frameType {
-	case "conditional", "line":
+	case "line":
 		tFrame := templateframe.TemplateFrame{
 			Breakpoints: d.Breakpoints,
 			ReqVars:     d.ReqVars,

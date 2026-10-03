@@ -136,9 +136,6 @@ type debugHelmInput struct {
 type breakpointLines struct {
 	LineStart        int `json:"line_start" jsonschema:"(*state).walk line start"`
 	RenderedManifest int `json:"rendered_manifest" jsonschema:"rendered manifest write line"`
-	ConditionalStart int `json:"conditional_start" jsonschema:"if/with pipeline evaluation line"`
-	ConditionalTrue  int `json:"conditional_true" jsonschema:"truthy branch line"`
-	ConditionalFalse int `json:"conditional_false" jsonschema:"falsy branch line"`
 }
 
 type debugHelmOutput struct {
@@ -203,9 +200,6 @@ func summarize(result *debugger.Result, cfg *settings.Settings, mode string) deb
 		LineNumbers: breakpointLines{
 			LineStart:        lines.LineStart,
 			RenderedManifest: lines.RenderedManifest,
-			ConditionalStart: lines.ConditionalStart,
-			ConditionalTrue:  lines.ConditionalTrue,
-			ConditionalFalse: lines.ConditionalFalse,
 		},
 	}
 
@@ -354,9 +348,6 @@ func toBreakpointLines(lines breakpoints.LineNumbers) breakpointLines {
 	return breakpointLines{
 		LineStart:        lines.LineStart,
 		RenderedManifest: lines.RenderedManifest,
-		ConditionalStart: lines.ConditionalStart,
-		ConditionalTrue:  lines.ConditionalTrue,
-		ConditionalFalse: lines.ConditionalFalse,
 	}
 }
 

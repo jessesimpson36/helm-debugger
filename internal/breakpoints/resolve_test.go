@@ -69,9 +69,6 @@ func (s *state) walkIfOrWith(typ parse.NodeType, dot reflect.Value, pipe *parse.
 	want := LineNumbers{
 		LineStart:        findLine(t, fixture, "func (s *state) walk(dot") + 1, // s.at(node) on next line
 		RenderedManifest: findLine(t, fixture, "s.wr.Write(node.Text)"),
-		ConditionalStart: findLine(t, fixture, "s.evalPipeline(dot, pipe)"),
-		ConditionalTrue:  findLine(t, fixture, "if truth {"),
-		ConditionalFalse: findLine(t, fixture, "s.walk(dot, elseList)"),
 	}
 	if got != want {
 		t.Fatalf("resolveFile = %+v, want %+v", got, want)
@@ -108,16 +105,12 @@ func TestResolveFromRuntimeGOROOT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve(%s): %v", goroot, err)
 	}
-	if lines.LineStart == 0 || lines.RenderedManifest == 0 || lines.ConditionalStart == 0 ||
-		lines.ConditionalTrue == 0 || lines.ConditionalFalse == 0 {
+	if lines.LineStart == 0 || lines.RenderedManifest == 0 {
 		t.Fatalf("incomplete line numbers: %+v", lines)
 	}
-	// The conditional branch lines must be ordered and inside the file.
+	// The walk breakpoint lines must be ordered and inside the file.
 	if !(lines.LineStart < lines.RenderedManifest) {
 		t.Fatalf("expected walk lines ordered, got %+v", lines)
-	}
-	if !(lines.ConditionalStart < lines.ConditionalTrue && lines.ConditionalTrue <= lines.ConditionalFalse) {
-		t.Fatalf("expected conditional lines ordered, got %+v", lines)
 	}
 }
 

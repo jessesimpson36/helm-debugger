@@ -15,16 +15,11 @@ toolchain versions.
 
 ## Modes
 
-The execution **modes** of this program are alternative main functions used to
-explore which output is most useful. The less useful ones may be removed.
+The debugger has two modes, selected with `--mode`:
 
 - **model**: Builds a complete data structure representing all execution flows
   within the chart templates and helpers, then lets you query which execution
-  flows to follow.
-- **branch**: The first mode built; it only captures `if`/`else` conditions and
-  whether they evaluate to true or false. It is not very useful.
-- **line**: Prints out every line as it is processed. This mode is overwhelming
-  without being filtered.
+  flows to follow. This is the default and the basis for the MCP server.
 - **mcp**: Runs a Model Context Protocol server over stdio so AI tools can
   render and debug charts at runtime. See [MCP server](mcp-server.md).
 

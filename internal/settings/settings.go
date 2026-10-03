@@ -40,7 +40,7 @@ func NewSettings() *Settings {
 	flag.StringVar(&commaDelimitedHelpersQueryFiles, "helper-file", "", "Comma-delimited list of query files for helpers.")
 	flag.StringVar(&commaDelimitedValuesQuery, "values", "", "Comma-delimited list of values queries to capture.")
 	flag.StringVar(&rawCommandArgs, "extra-command-args", "", "Additional command line arguments to pass to 'helm template' command.")
-	flag.StringVar(&settings.Mode, "mode", "model", "Mode of operation: model, branch, line, mcp")
+	flag.StringVar(&settings.Mode, "mode", "model", "Mode of operation: model, mcp")
 	flag.StringVar(&settings.CompiledHelmPath, "helm-path", "helm", "Path to the compiled Helm binary.")
 	flag.StringVar(&settings.GoRoot, "goroot", "", "GOROOT used to resolve text/template breakpoints. Defaults to the debugger's own GOROOT.")
 	flag.StringVar(&settings.WorkingDir, "working-dir", "", "Directory the helm chart paths are relative to. Defaults to the current directory.")
