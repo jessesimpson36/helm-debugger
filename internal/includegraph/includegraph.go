@@ -292,7 +292,12 @@ func (g *Graph) Anchor(ownerRT string, callees []string) (CallSite, bool) {
 }
 
 // reachesAny reports whether start can reach any name in targets by following
-// literal calls.
+// literal calls. A definition whose body contains a dynamic include is treated
+// as possibly reaching any target: its callee cannot be known statically, so
+// assuming it could reach the target is the conservative choice, matching the
+// "Unresolved" handling used by Closure. Without this, a helper reached only
+// through a dynamic include (for example `.manifest`) would appear unreachable
+// and the anchor would degrade to an arbitrary owner line.
 func (g *Graph) reachesAny(start string, targets map[string]struct{}) bool {
 	seen := map[string]struct{}{}
 	stack := []string{start}
@@ -303,6 +308,9 @@ func (g *Graph) reachesAny(start string, targets map[string]struct{}) bool {
 			continue
 		}
 		seen[name] = struct{}{}
+		if len(targets) > 0 && g.unresolved[name] {
+			return true
+		}
 		for callee := range g.directCalls[name] {
 			if _, want := targets[callee]; want {
 				return true

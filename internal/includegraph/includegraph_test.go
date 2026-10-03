@@ -86,6 +86,32 @@ func TestAnchorFindsTransitiveCallSite(t *testing.T) {
 	}
 }
 
+func TestAnchorThroughDynamicInclude(t *testing.T) {
+	// The owner calls chart.viaDynamic, whose body includes a helper through a
+	// dynamic name. The graph cannot resolve that callee, but the target may be
+	// reached, so the anchor must still be the owner's call to chart.viaDynamic
+	// rather than an unrelated owner line.
+	owner := "a\nb\n  labels: {{ include \"chart.viaDynamic\" . }}\n"
+	helpers := "{{- define \"chart.viaDynamic\" -}}\n{{ include (printf \"%s.real\" .which) . }}\n{{- end -}}\n"
+
+	g := &Graph{
+		directCalls: map[string]map[string]struct{}{},
+		unresolved:  map[string]bool{},
+		defined:     map[string]bool{},
+		callSites:   map[string][]CallSite{},
+	}
+	g.parseFile("templates/owner.yaml", owner)
+	g.parseFile("templates/_helpers.tpl", helpers)
+
+	site, ok := g.Anchor("mychart/templates/owner.yaml", []string{"chart.target"})
+	if !ok {
+		t.Fatal("expected an anchor through the dynamic include")
+	}
+	if site.Line != 3 {
+		t.Fatalf("anchor line = %d, want 3 (the call to chart.viaDynamic)", site.Line)
+	}
+}
+
 func TestClosureResolvesNestedIncludes(t *testing.T) {
 	g := parseString(t, sample)
 
