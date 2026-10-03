@@ -126,7 +126,10 @@ func writeFlow(w io.Writer, flow *executionflow.ExecutionFlow) {
 		fmt.Fprintf(w, "%s\n", flow.Owner)
 	}
 	for _, helper := range flow.Helpers {
-		_ = helper.Display(w, true)
+		// Under gating a flow can also capture lines of the template itself,
+		// which are stored with the helpers for ordering. Render them as
+		// template lines (unindented, no "in") so they do not abut the anchor.
+		_ = helper.Display(w, !executionflow.IsTemplate(helper))
 	}
 	fmt.Fprintln(w, "Relevant Values")
 	for _, valRef := range dedupeValuesReferences(flow.ValuesReference) {
